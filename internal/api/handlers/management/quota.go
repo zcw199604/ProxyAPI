@@ -66,7 +66,7 @@ func (h *Handler) ResetQuota(c *gin.Context) {
 		"auth_index": updated.Index,
 		"models":     models,
 	}
-	if stats := h.accountUsageStats(updated.ID, updated.Provider, updated.Quota); stats != nil {
+	if stats := h.accountUsageStats(updated.UsageAccountID(), updated.Provider, updated.Quota, updated.ID); stats != nil {
 		response["usage_stats"] = stats
 	}
 	c.JSON(http.StatusOK, response)

@@ -123,3 +123,13 @@ func TestAccountInfoUsesAuthKind(t *testing.T) {
 		t.Fatalf("oauth without email AccountInfo() = %q, %q", kind, value)
 	}
 }
+
+func TestUsageAccountIDPrefersProviderAccountID(t *testing.T) {
+	auth := &Auth{ID: "file-id", Metadata: map[string]any{"id_token": map[string]any{"chatgpt_account_id": "account-id"}}}
+	if got := auth.UsageAccountID(); got != "account-id" {
+		t.Fatalf("UsageAccountID() = %q, want account-id", got)
+	}
+	if got := (&Auth{ID: "file-id"}).UsageAccountID(); got != "file-id" {
+		t.Fatalf("fallback UsageAccountID() = %q, want file-id", got)
+	}
+}

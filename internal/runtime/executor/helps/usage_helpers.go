@@ -77,7 +77,7 @@ func NewUsageReporter(ctx context.Context, provider, model string, auth *cliprox
 		generate:    usage.GenerateFromContext(ctx),
 	}
 	if auth != nil {
-		reporter.authID = auth.ID
+		reporter.authID = auth.UsageAccountID()
 		reporter.authIndex = auth.EnsureIndex()
 		reporter.accessTokenHash = authAccessTokenSHA256(auth)
 	}

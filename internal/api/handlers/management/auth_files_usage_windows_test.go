@@ -82,6 +82,31 @@ func TestAccountUsageStatsSeparatesQuotaWindowsAndImportTotal(t *testing.T) {
 	assertWindowRequestCount(t, windows, "7d", 3)
 }
 
+func TestAccountUsageStatsIncludesEstimatedQuotaCost(t *testing.T) {
+	store, err := internalusage.OpenSQLiteStore(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	plugin := internalusage.NewStatsPlugin(store, pricing.Resolver{})
+	h := &Handler{}
+	h.SetStatsPlugin(plugin)
+	plugin.HandleUsage(nil, coreusage.Record{
+		EventID: "quota-cost-event", AuthID: "account-1", Provider: "codex", Model: "gpt-test",
+		Detail: coreusage.Detail{InputTokens: 1, TotalTokens: 1},
+	})
+	quota := coreauth.QuotaState{Signals: map[string]string{
+		"X-Codex-Primary-Window-Minutes": "10080",
+		"X-Codex-Primary-Used-Percent":   "60",
+	}}
+	stats := h.accountUsageStats("account-1", "codex", quota)
+	windows := stats["windows"].(gin.H)
+	window := windows["7d"].(gin.H)
+	if value, ok := window["quota_used_percent"].(float64); !ok || value != 60 {
+		t.Fatalf("quota_used_percent = %#v, want 60", window["quota_used_percent"])
+	}
+}
+
 func assertWindowRequestCount(t *testing.T, windows gin.H, name string, want int64) {
 	t.Helper()
 	payload, ok := windows[name].(gin.H)

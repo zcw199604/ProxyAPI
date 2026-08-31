@@ -600,6 +600,25 @@ func (a *Auth) AccountInfo() (string, string) {
 	}
 }
 
+// UsageAccountID returns the stable provider account identifier used to merge
+// statistics across multiple imported credential files.
+func (a *Auth) UsageAccountID() string {
+	if a == nil {
+		return ""
+	}
+	if a.Metadata != nil {
+		if value, ok := a.Metadata["account_id"].(string); ok && strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+		if token, ok := a.Metadata["id_token"].(map[string]any); ok {
+			if value, ok := token["chatgpt_account_id"].(string); ok && strings.TrimSpace(value) != "" {
+				return strings.TrimSpace(value)
+			}
+		}
+	}
+	return strings.TrimSpace(a.ID)
+}
+
 // ExpirationTime attempts to extract the credential expiration timestamp from metadata.
 // It inspects common keys such as "expired", "expire", "expires_at", and also
 // nested "token" objects to remain compatible with legacy auth file formats.

@@ -345,7 +345,7 @@ func (h *Handler) buildAuthFileEntryLocked(auth *coreauth.Auth) gin.H {
 	entry["success"] = auth.Success
 	entry["failed"] = auth.Failed
 	entry["recent_requests"] = auth.RecentRequestsSnapshot(time.Now())
-	if stats := h.accountUsageStats(auth.ID, auth.Provider, auth.Quota); stats != nil {
+	if stats := h.accountUsageStats(auth.UsageAccountID(), auth.Provider, auth.Quota, auth.ID); stats != nil {
 		entry["usage_stats"] = stats
 	}
 	entry["quota"] = quotaObservationPayloadForProvider(auth.Provider, auth.Quota)
@@ -451,7 +451,7 @@ func authFileRequestRetryFromJSON(data []byte) (int, bool) {
 
 // accountUsageStats returns a bounded, credential-free snapshot suitable for
 // embedding next to an auth-file/quota entry in the management response.
-func (h *Handler) accountUsageStats(authID, provider string, quota coreauth.QuotaState) gin.H {
+func (h *Handler) accountUsageStats(authID, provider string, quota coreauth.QuotaState, legacyIDs ...string) gin.H {
 	if h == nil || strings.TrimSpace(authID) == "" {
 		return nil
 	}
@@ -463,13 +463,25 @@ func (h *Handler) accountUsageStats(authID, provider string, quota coreauth.Quot
 	}
 	// Auth ID is the stable account key; do not filter by provider so a
 	// provider alias change cannot hide earlier events for the same account.
-	query := internalusage.Query{AuthID: authID}
+	usageIDs := []string{authID}
+	if h.authManager != nil {
+		for _, auth := range h.authManager.List() {
+			if auth != nil && strings.TrimSpace(auth.UsageAccountID()) == authID {
+				usageIDs = append(usageIDs, auth.ID)
+			}
+		}
+	}
+	for _, legacyID := range legacyIDs {
+		if legacyID = strings.TrimSpace(legacyID); legacyID != "" && !containsString(usageIDs, legacyID) {
+			usageIDs = append(usageIDs, legacyID)
+		}
+	}
 	now := time.Now().UTC()
 	// The durable event history is the import-to-date total. Do not use the
 	// runtime CreatedAt value as a lower bound because it can be reconstructed
 	// when the service restarts. Event retention remains controlled by
 	// usage-stats-retention-days (zero keeps history indefinitely).
-	total, err := plugin.QueryWindow(query, time.Time{}, now)
+	total, err := h.sumUsageWindows(plugin, usageIDs, time.Time{}, now)
 	if err != nil {
 		return nil
 	}
@@ -488,15 +500,50 @@ func (h *Handler) accountUsageStats(authID, provider string, quota coreauth.Quot
 		default:
 			continue
 		}
-		windowSummary, errWindow := plugin.QueryWindow(query, now.Add(-duration), now)
+		windowSummary, errWindow := h.sumUsageWindows(plugin, usageIDs, now.Add(-duration), now)
 		if errWindow != nil {
 			return nil
 		}
-		windows[window] = usageSummaryPayload(windowSummary)
+		windowPayload := usageSummaryPayload(windowSummary)
+		addQuotaCostEstimate(windowPayload, window, provider, quota.Signals)
+		windows[window] = windowPayload
 	}
 	totalPayload["windows"] = windows
 	totalPayload["available_windows"] = availableWindows
 	return totalPayload
+}
+
+func containsString(values []string, target string) bool {
+	for _, value := range values {
+		if value == target {
+			return true
+		}
+	}
+	return false
+}
+
+func (h *Handler) sumUsageWindows(plugin *internalusage.StatsPlugin, authIDs []string, from, to time.Time) (internalusage.Summary, error) {
+	var total internalusage.Summary
+	for _, authID := range authIDs {
+		summary, err := plugin.QueryWindow(internalusage.Query{AuthID: authID}, from, to)
+		if err != nil {
+			return total, err
+		}
+		total.RequestCount += summary.RequestCount
+		total.SuccessCount += summary.SuccessCount
+		total.FailedCount += summary.FailedCount
+		total.InputTokens += summary.InputTokens
+		total.OutputTokens += summary.OutputTokens
+		total.ReasoningTokens += summary.ReasoningTokens
+		total.TotalTokens += summary.TotalTokens
+		total.PricedRequestCount += summary.PricedRequestCount
+		total.UnpricedRequestCount += summary.UnpricedRequestCount
+		if cost, err := strconv.ParseFloat(summary.TotalCostUSD, 64); err == nil {
+			current, _ := strconv.ParseFloat(total.TotalCostUSD, 64)
+			total.TotalCostUSD = strconv.FormatFloat(current+cost, 'f', 9, 64)
+		}
+	}
+	return total, nil
 }
 
 func usageSummaryPayload(summary internalusage.Summary) gin.H {
@@ -506,6 +553,45 @@ func usageSummaryPayload(summary internalusage.Summary) gin.H {
 		"total_tokens": summary.TotalTokens, "priced_request_count": summary.PricedRequestCount, "unpriced_request_count": summary.UnpricedRequestCount,
 		"total_cost_usd": summary.TotalCostUSD,
 	}
+}
+
+func usageQuotaPercent(provider, window string, signals map[string]string) (float64, bool) {
+	provider = strings.ToLower(strings.TrimSpace(provider))
+	window = strings.ToLower(strings.TrimSpace(window))
+	if provider == "codex" {
+		prefix := "X-Codex-Primary-"
+		if window == "5h" {
+			if signals["X-Codex-Primary-Window-Minutes"] != "300" {
+				prefix = "X-Codex-Secondary-"
+			}
+		} else if window == "7d" && signals["X-Codex-Primary-Window-Minutes"] != "10080" {
+			prefix = "X-Codex-Secondary-"
+		}
+		value, err := strconv.ParseFloat(strings.TrimSpace(signals[prefix+"Used-Percent"]), 64)
+		return value, err == nil && value >= 0 && value <= 100
+	}
+	if provider == "claude" {
+		value, err := strconv.ParseFloat(strings.TrimSpace(signals["Anthropic-Ratelimit-Unified-"+window+"-Utilization"]), 64)
+		return value * 100, err == nil && value >= 0 && value <= 1
+	}
+	return 0, false
+}
+
+func addQuotaCostEstimate(payload gin.H, window, provider string, signals map[string]string) {
+	usedPercent, ok := usageQuotaPercent(provider, window, signals)
+	if !ok {
+		return
+	}
+	payload["quota_used_percent"] = usedPercent
+	payload["quota_remaining_percent"] = 100 - usedPercent
+	spent, err := strconv.ParseFloat(fmt.Sprint(payload["total_cost_usd"]), 64)
+	if err != nil || spent <= 0 || usedPercent <= 0 {
+		return
+	}
+	estimatedTotal := spent * 100 / usedPercent
+	remaining := estimatedTotal - spent
+	payload["quota_estimated_total_cost_usd"] = strconv.FormatFloat(estimatedTotal, 'f', 9, 64)
+	payload["quota_estimated_remaining_cost_usd"] = strconv.FormatFloat(remaining, 'f', 9, 64)
 }
 
 // quotaObservationPayload exposes only passive provider observations. Cooldown

@@ -20,7 +20,7 @@ func (h *Handler) GetAccountStats(c *gin.Context) {
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "usage_statistics_unavailable"})
 		return
 	}
-	query, err := parseStatsQuery(c)
+	query, err := h.parseStatsQuery(c)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid_query", "message": err.Error()})
 		return
@@ -33,8 +33,11 @@ func (h *Handler) GetAccountStats(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"items": items, "total": total, "page": query.Page, "page_size": query.PageSize})
 }
 
-func parseStatsQuery(c *gin.Context) (internalusage.Query, error) {
+func (h *Handler) parseStatsQuery(c *gin.Context) (internalusage.Query, error) {
 	q := internalusage.Query{AuthID: strings.TrimSpace(c.Query("auth_id")), Provider: strings.TrimSpace(c.Query("provider")), Model: strings.TrimSpace(c.Query("model")), GroupBy: strings.TrimSpace(c.Query("group_by")), Page: 1, PageSize: 100}
+	if h != nil && q.AuthID != "" {
+		q.AuthID = h.resolveAuthID(q.AuthID, "")
+	}
 	parseTime := func(key string) (time.Time, error) {
 		raw := strings.TrimSpace(c.Query(key))
 		if raw == "" {

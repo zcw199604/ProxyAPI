@@ -78,7 +78,12 @@ func (h *Handler) PutAccountPricing(c *gin.Context) {
 
 func (h *Handler) resolveAuthID(authID, authIndex string) string {
 	authID = strings.TrimSpace(authID)
-	if authID != "" {
+	if h != nil && h.authManager != nil && authID != "" {
+		for _, auth := range h.authManager.List() {
+			if auth != nil && strings.EqualFold(strings.TrimSpace(auth.ID), authID) {
+				return strings.TrimSpace(auth.UsageAccountID())
+			}
+		}
 		return authID
 	}
 	authIndex = strings.TrimSpace(authIndex)
@@ -87,7 +92,7 @@ func (h *Handler) resolveAuthID(authID, authIndex string) string {
 	}
 	for _, auth := range h.authManager.List() {
 		if auth != nil && strings.EqualFold(strings.TrimSpace(auth.EnsureIndex()), authIndex) {
-			return strings.TrimSpace(auth.ID)
+			return strings.TrimSpace(auth.UsageAccountID())
 		}
 	}
 	return authID
