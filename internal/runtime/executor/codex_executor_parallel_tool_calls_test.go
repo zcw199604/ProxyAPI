@@ -63,3 +63,15 @@ func TestNormalizeCodexParallelToolCalls_ResponsesLiteHeaderForcesFalse(t *testi
 		t.Fatalf("responses-lite parallel_tool_calls should be false: %s", string(out))
 	}
 }
+
+func TestNormalizeCodexParallelToolCalls_AfterPiPayloadNormalizationKeepsLiteFalse(t *testing.T) {
+	body := []byte(`{"model":"gpt-5.6-luna","parallel_tool_calls":true,"client_metadata":{"ws_request_header_x_openai_internal_codex_responses_lite":"true"}}`)
+
+	body = normalizePiCodexPayload(body, "gpt-5.6-luna", "", nil)
+	out := body
+
+	parallelToolCalls := gjson.GetBytes(out, "parallel_tool_calls")
+	if !parallelToolCalls.Exists() || parallelToolCalls.Bool() {
+		t.Fatalf("responses-lite parallel_tool_calls should remain false after Pi normalization: %s", string(out))
+	}
+}

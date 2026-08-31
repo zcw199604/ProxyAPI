@@ -25,7 +25,7 @@ const (
 	piCodexDefaultInstructions = "You are a helpful assistant."
 )
 
-func normalizePiCodexPayload(body []byte, model string, sessionID string) []byte {
+func normalizePiCodexPayload(body []byte, model string, sessionID string, headers ...http.Header) []byte {
 	if len(body) == 0 || !gjson.ValidBytes(body) {
 		body = []byte(`{}`)
 	}
@@ -49,7 +49,11 @@ func normalizePiCodexPayload(body []byte, model string, sessionID string) []byte
 	if !gjson.GetBytes(body, "tool_choice").Exists() {
 		body = helps.SetStringIfDifferent(body, "tool_choice", "auto")
 	}
-	body = helps.SetBoolIfDifferent(body, "parallel_tool_calls", true)
+	parallelToolCalls := true
+	if len(headers) > 0 && isCodexResponsesLiteRequest(body, headers[0]) {
+		parallelToolCalls = false
+	}
+	body = helps.SetBoolIfDifferent(body, "parallel_tool_calls", parallelToolCalls)
 	for _, field := range []string{"generate", "prompt_cache_retention", "safety_identifier", "stream_options"} {
 		body, _ = sjson.DeleteBytes(body, field)
 	}
@@ -114,7 +118,7 @@ func newPiCodexWebSocketHeaders(auth *cliproxyauth.Auth, accessToken string, mod
 
 func newPiCodexSSERequest(ctx context.Context, url string, auth *cliproxyauth.Auth, accessToken string, model string, body []byte, req cliproxyexecutor.Request, additionalHeaders http.Header) (*http.Request, []byte, error) {
 	sessionID := piCodexSessionID(req)
-	body = normalizePiCodexPayload(body, model, sessionID)
+	body = normalizePiCodexPayload(body, model, sessionID, additionalHeaders)
 	upstreamBody := body
 	contentEncoding := ""
 	if compressed, errCompress := compressPiCodexBody(body); errCompress == nil && !isLoopbackCodexTarget(url) {

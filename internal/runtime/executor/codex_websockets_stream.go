@@ -72,7 +72,7 @@ func (e *CodexWebsocketsExecutor) ExecuteStream(ctx context.Context, auth *clipr
 	}
 
 	var wsHeaders http.Header
-	body = normalizePiCodexPayload(body, baseModel, piCodexSessionID(req))
+	body = normalizePiCodexPayload(body, baseModel, piCodexSessionID(req), opts.Headers)
 	upstreamBody := body
 	wsHeaders, err = newPiCodexWebSocketHeaders(auth, apiKey, baseModel, req, opts.Headers)
 	if err != nil {

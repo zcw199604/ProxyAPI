@@ -241,8 +241,8 @@ func TestCodexWebsocketsExecuteResponsesLiteDoesNotInjectImageGenerationTool(t *
 			t.Fatalf("responses-lite metadata = %q, want true; payload=%s", got, payload)
 		}
 		parallelToolCalls := gjson.GetBytes(payload, "parallel_tool_calls")
-		if !parallelToolCalls.Exists() || !parallelToolCalls.Bool() {
-			t.Fatalf("Pi parallel_tool_calls should be true: %s", payload)
+		if !parallelToolCalls.Exists() || parallelToolCalls.Bool() {
+			t.Fatalf("Responses-Lite parallel_tool_calls should be false: %s", payload)
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("timed out waiting for upstream websocket payload")
@@ -312,8 +312,8 @@ func TestCodexWebsocketsExecuteStreamResponsesLiteForcesParallelToolCallsFalse(t
 	select {
 	case payload := <-capturedPayload:
 		parallelToolCalls := gjson.GetBytes(payload, "parallel_tool_calls")
-		if !parallelToolCalls.Exists() || !parallelToolCalls.Bool() {
-			t.Fatalf("Pi parallel_tool_calls should be true: %s", payload)
+		if !parallelToolCalls.Exists() || parallelToolCalls.Bool() {
+			t.Fatalf("Responses-Lite parallel_tool_calls should be false: %s", payload)
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("timed out waiting for upstream websocket payload")

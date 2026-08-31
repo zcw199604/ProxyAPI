@@ -53,8 +53,8 @@ func TestCodexExecutorExecuteResponsesLiteHeaderDoesNotInjectImageGenerationTool
 		t.Fatalf("unexpected tools in responses-lite upstream payload: %s", tools.Raw)
 	}
 	parallelToolCalls := gjson.GetBytes(gotBody, "parallel_tool_calls")
-	if !parallelToolCalls.Exists() || !parallelToolCalls.Bool() {
-		t.Fatalf("Pi parallel_tool_calls should be true: %s", gotBody)
+	if !parallelToolCalls.Exists() || parallelToolCalls.Bool() {
+		t.Fatalf("Responses-Lite parallel_tool_calls should be false: %s", gotBody)
 	}
 }
 
@@ -100,8 +100,8 @@ func TestCodexExecutorExecuteStreamResponsesLiteHeaderForcesParallelToolCallsFal
 	}
 
 	parallelToolCalls := gjson.GetBytes(gotBody, "parallel_tool_calls")
-	if !parallelToolCalls.Exists() || !parallelToolCalls.Bool() {
-		t.Fatalf("Pi parallel_tool_calls should be true: %s", gotBody)
+	if !parallelToolCalls.Exists() || parallelToolCalls.Bool() {
+		t.Fatalf("Responses-Lite parallel_tool_calls should be false: %s", gotBody)
 	}
 }
 
