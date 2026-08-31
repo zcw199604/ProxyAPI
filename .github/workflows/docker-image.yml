@@ -10,7 +10,9 @@ on:
 
 env:
   APP_NAME: CLIProxyAPI
-  DOCKERHUB_REPO: eceasy/cli-proxy-api
+  # Keep the image in the Docker Hub namespace used by the liao project.
+  # Repository names are lowercase because Docker Hub rejects uppercase names.
+  DOCKERHUB_REPO: a7413498/proxyapi
 
 jobs:
   docker_amd64:
