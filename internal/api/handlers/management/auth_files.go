@@ -345,7 +345,7 @@ func (h *Handler) buildAuthFileEntryLocked(auth *coreauth.Auth) gin.H {
 	entry["success"] = auth.Success
 	entry["failed"] = auth.Failed
 	entry["recent_requests"] = auth.RecentRequestsSnapshot(time.Now())
-	if stats := h.accountUsageStats(auth.ID); stats != nil {
+	if stats := h.accountUsageStats(auth.ID, auth.Provider, auth.Quota, auth.CreatedAt); stats != nil {
 		entry["usage_stats"] = stats
 	}
 	entry["quota"] = quotaObservationPayloadForProvider(auth.Provider, auth.Quota)
@@ -451,7 +451,7 @@ func authFileRequestRetryFromJSON(data []byte) (int, bool) {
 
 // accountUsageStats returns a bounded, credential-free snapshot suitable for
 // embedding next to an auth-file/quota entry in the management response.
-func (h *Handler) accountUsageStats(authID string) gin.H {
+func (h *Handler) accountUsageStats(authID, provider string, quota coreauth.QuotaState, importedAt time.Time) gin.H {
 	if h == nil || strings.TrimSpace(authID) == "" {
 		return nil
 	}
@@ -461,28 +461,46 @@ func (h *Handler) accountUsageStats(authID string) gin.H {
 	if plugin == nil {
 		return nil
 	}
-	items, _, err := plugin.Query(internalusage.Query{AuthID: authID, GroupBy: "model", Page: 1, PageSize: 1000})
+	// Auth ID is the stable account key; do not filter by provider so a
+	// provider alias change cannot hide earlier events for the same account.
+	query := internalusage.Query{AuthID: authID}
+	now := time.Now().UTC()
+	total, err := plugin.QueryWindow(query, importedAt, now)
 	if err != nil {
 		return nil
 	}
-	var requestCount, successCount, failedCount, inputTokens, outputTokens, reasoningTokens, totalTokens, priced, unpriced, cost int64
-	for _, item := range items {
-		requestCount += item.RequestCount
-		successCount += item.SuccessCount
-		failedCount += item.FailedCount
-		inputTokens += item.InputTokens
-		outputTokens += item.OutputTokens
-		reasoningTokens += item.ReasoningTokens
-		totalTokens += item.TotalTokens
-		priced += item.PricedRequestCount
-		unpriced += item.UnpricedRequestCount
-		cost += item.TotalCostNanoUSD
+	totalPayload := usageSummaryPayload(total)
+	windows := gin.H{
+		"total": usageSummaryPayload(total),
 	}
+	availableWindows := coreauth.ObservedQuotaWindows(provider, quota.Signals)
+	for _, window := range availableWindows {
+		var duration time.Duration
+		switch window {
+		case "5h":
+			duration = 5 * time.Hour
+		case "7d":
+			duration = 7 * 24 * time.Hour
+		default:
+			continue
+		}
+		windowSummary, errWindow := plugin.QueryWindow(query, now.Add(-duration), now)
+		if errWindow != nil {
+			return nil
+		}
+		windows[window] = usageSummaryPayload(windowSummary)
+	}
+	totalPayload["windows"] = windows
+	totalPayload["available_windows"] = availableWindows
+	return totalPayload
+}
+
+func usageSummaryPayload(summary internalusage.Summary) gin.H {
 	return gin.H{
-		"request_count": requestCount, "success_count": successCount, "failed_count": failedCount,
-		"input_tokens": inputTokens, "output_tokens": outputTokens, "reasoning_tokens": reasoningTokens,
-		"total_tokens": totalTokens, "priced_request_count": priced, "unpriced_request_count": unpriced,
-		"total_cost_usd": fmt.Sprintf("%.9f", float64(cost)/1_000_000_000),
+		"request_count": summary.RequestCount, "success_count": summary.SuccessCount, "failed_count": summary.FailedCount,
+		"input_tokens": summary.InputTokens, "output_tokens": summary.OutputTokens, "reasoning_tokens": summary.ReasoningTokens,
+		"total_tokens": summary.TotalTokens, "priced_request_count": summary.PricedRequestCount, "unpriced_request_count": summary.UnpricedRequestCount,
+		"total_cost_usd": summary.TotalCostUSD,
 	}
 }
 

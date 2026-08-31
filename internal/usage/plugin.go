@@ -126,6 +126,55 @@ func (p *StatsPlugin) Query(query Query) ([]Summary, int64, error) {
 	return p.store.QuerySummary(query)
 }
 
+// QueryWindow returns an exact timestamp-bounded aggregate over immutable
+// events. The method is intentionally separate from Query because the latter
+// may use the day aggregate for efficient calendar-range queries.
+func (p *StatsPlugin) QueryWindow(query Query, from, to time.Time) (Summary, error) {
+	if p == nil || p.store == nil {
+		return Summary{}, errors.New("usage: stats plugin is not initialized")
+	}
+	exactStore, ok := p.store.(interface {
+		QueryEventSummary(Query) ([]Summary, int64, error)
+	})
+	if !ok {
+		return Summary{}, errors.New("usage: exact event queries are not supported")
+	}
+	query.From = from
+	query.To = to
+	query.GroupBy = "model"
+	query.PageSize = 1000
+	var total Summary
+	total.AuthID = strings.TrimSpace(query.AuthID)
+	total.Provider = strings.TrimSpace(query.Provider)
+	for page := 1; ; page++ {
+		query.Page = page
+		items, itemTotal, err := exactStore.QueryEventSummary(query)
+		if err != nil {
+			return Summary{}, err
+		}
+		for _, item := range items {
+			total.RequestCount += item.RequestCount
+			total.SuccessCount += item.SuccessCount
+			total.FailedCount += item.FailedCount
+			total.InputTokens += item.InputTokens
+			total.OutputTokens += item.OutputTokens
+			total.ReasoningTokens += item.ReasoningTokens
+			total.CacheReadTokens += item.CacheReadTokens
+			total.CacheWriteTokens += item.CacheWriteTokens
+			total.UnclassifiedTokens += item.UnclassifiedTokens
+			total.TotalTokens += item.TotalTokens
+			total.PricedRequestCount += item.PricedRequestCount
+			total.UnpricedRequestCount += item.UnpricedRequestCount
+			total.TotalCostNanoUSD += item.TotalCostNanoUSD
+		}
+		if int64(page*query.PageSize) >= itemTotal || len(items) == 0 {
+			break
+		}
+	}
+	total.TotalCostUSD = formatUSD(total.TotalCostNanoUSD)
+	return total, nil
+}
+
 // Store exposes the underlying store for management handlers.
 func (p *StatsPlugin) Store() StatsStore {
 	if p == nil {

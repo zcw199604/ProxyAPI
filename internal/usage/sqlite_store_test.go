@@ -1,6 +1,7 @@
 package usage
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -55,5 +56,60 @@ func TestSQLiteStoreOverridesSoftDisable(t *testing.T) {
 	items, err = store.ListOverrides("auth-a")
 	if err != nil || len(items) != 1 || items[0].Enabled {
 		t.Fatalf("disabled override = %v, %+v", err, items)
+	}
+}
+
+func TestSQLiteStoreQueryEventSummaryUsesExactTimeWindow(t *testing.T) {
+	store, err := OpenSQLiteStore(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	now := time.Date(2026, 8, 31, 12, 0, 0, 0, time.UTC)
+	for index, requestedAt := range []time.Time{
+		now.Add(-6 * time.Hour),
+		now.Add(-5 * time.Hour),
+		now.Add(-3 * time.Hour),
+	} {
+		event := Event{
+			EventID:     fmt.Sprintf("window-event-%d", index),
+			RequestedAt: requestedAt,
+			AuthID:      "auth-window",
+			Provider:    "claude",
+			Model:       "claude-sonnet",
+			Success:     true,
+			Detail: coreusage.Detail{
+				InputTokens:  10,
+				OutputTokens: 5,
+				TotalTokens:  15,
+				TokenBreakdown: coreusage.NewSubsetTokenBreakdown(
+					10, 0, 0, 5, 0, 15,
+				),
+			},
+			PricingStatus: pricingStatusUnpriced,
+		}
+		if err := store.AppendEvent(event); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	items, total, err := store.QueryEventSummary(Query{
+		AuthID:   "auth-window",
+		Provider: "claude",
+		From:     now.Add(-5 * time.Hour),
+		To:       now,
+		GroupBy:  "model",
+		Page:     1,
+		PageSize: 100,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if total != 1 || len(items) != 1 {
+		t.Fatalf("window summaries = %d/%d, want 1/1: %+v", total, len(items), items)
+	}
+	if items[0].RequestCount != 2 || items[0].TotalTokens != 30 {
+		t.Fatalf("window summary = %+v, want two requests and 30 tokens", items[0])
 	}
 }

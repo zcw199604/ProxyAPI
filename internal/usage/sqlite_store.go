@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -319,6 +320,144 @@ func (s *SQLiteStore) QuerySummary(query Query) ([]Summary, int64, error) {
 		out = append(out, item)
 	}
 	return out, total, rows.Err()
+}
+
+// QueryEventSummary aggregates immutable usage events using exact timestamp
+// bounds. It is used for rolling quota windows where day-level aggregation
+// would include requests outside the requested interval.
+func (s *SQLiteStore) QueryEventSummary(query Query) ([]Summary, int64, error) {
+	if s == nil || s.db == nil {
+		return nil, 0, errors.New("usage: sqlite store is nil")
+	}
+	where := []string{"1=1"}
+	args := []any{}
+	if !query.From.IsZero() {
+		where = append(where, "requested_at >= ?")
+		args = append(args, query.From.UTC().Format(time.RFC3339Nano))
+	}
+	if !query.To.IsZero() {
+		where = append(where, "requested_at < ?")
+		args = append(args, query.To.UTC().Format(time.RFC3339Nano))
+	}
+	if authID := strings.TrimSpace(query.AuthID); authID != "" {
+		where = append(where, "auth_id = ?")
+		args = append(args, authID)
+	}
+	if provider := strings.TrimSpace(query.Provider); provider != "" {
+		where = append(where, "provider = ?")
+		args = append(args, provider)
+	}
+	if model := strings.TrimSpace(query.Model); model != "" {
+		where = append(where, "model = ?")
+		args = append(args, model)
+	}
+
+	rows, err := s.db.Query(`SELECT event_id, day_key, auth_id, provider, model, success,
+		detail_json, cost_nano_usd, pricing_status FROM usage_events WHERE `+strings.Join(where, " AND ")+` ORDER BY requested_at, event_id`, args...)
+	if err != nil {
+		return nil, 0, fmt.Errorf("usage: query event summaries: %w", err)
+	}
+	defer rows.Close()
+
+	groupBy := strings.ToLower(strings.TrimSpace(query.GroupBy))
+	if groupBy == "day-model" {
+		groupBy = "day_model"
+	}
+	type aggregate struct {
+		Summary
+		key string
+	}
+	aggregates := make(map[string]*aggregate)
+	for rows.Next() {
+		var eventID, day, authID, provider, model, status string
+		var success, cost int64
+		var detailJSON []byte
+		if err := rows.Scan(&eventID, &day, &authID, &provider, &model, &success, &detailJSON, &cost, &status); err != nil {
+			return nil, 0, fmt.Errorf("usage: scan event summary: %w", err)
+		}
+		key := eventID
+		bucket := eventID
+		itemModel := model
+		switch groupBy {
+		case "day":
+			key = day + "\x00" + authID + "\x00" + provider
+			bucket = day
+			itemModel = ""
+		case "model":
+			key = authID + "\x00" + provider + "\x00" + model
+			bucket = ""
+		case "day_model":
+			key = day + "\x00" + authID + "\x00" + provider + "\x00" + model
+			bucket = day
+		default:
+			key = authID + "\x00" + provider
+			bucket = ""
+			itemModel = ""
+		}
+		item := aggregates[key]
+		if item == nil {
+			item = &aggregate{Summary: Summary{Bucket: bucket, AuthID: authID, Provider: provider, Model: itemModel}, key: key}
+			aggregates[key] = item
+		}
+		item.RequestCount++
+		if success != 0 {
+			item.SuccessCount++
+		} else {
+			item.FailedCount++
+		}
+		var detail coreusage.Detail
+		if err := json.Unmarshal(detailJSON, &detail); err != nil {
+			return nil, 0, fmt.Errorf("usage: decode event detail: %w", err)
+		}
+		breakdown := normalizedBreakdown(detail)
+		item.InputTokens += breakdown.Input.TotalTokens
+		item.OutputTokens += breakdown.Output.TotalTokens
+		item.ReasoningTokens += breakdown.Output.ReasoningTokens
+		item.CacheReadTokens += breakdown.Input.CacheReadTokens
+		item.CacheWriteTokens += breakdown.Input.CacheWriteTokens
+		item.UnclassifiedTokens += breakdown.UnclassifiedTokens
+		item.TotalTokens += breakdown.TotalTokens
+		if status == pricingStatusPriced {
+			item.PricedRequestCount++
+		} else if status == pricingStatusUnpriced {
+			item.UnpricedRequestCount++
+		}
+		item.TotalCostNanoUSD += cost
+	}
+	if err := rows.Err(); err != nil {
+		return nil, 0, fmt.Errorf("usage: iterate event summaries: %w", err)
+	}
+
+	ordered := make([]*aggregate, 0, len(aggregates))
+	for _, item := range aggregates {
+		item.TotalCostUSD = formatUSD(item.TotalCostNanoUSD)
+		ordered = append(ordered, item)
+	}
+	sort.Slice(ordered, func(i, j int) bool { return ordered[i].key < ordered[j].key })
+	page := query.Page
+	if page < 1 {
+		page = 1
+	}
+	pageSize := query.PageSize
+	if pageSize <= 0 {
+		pageSize = 100
+	}
+	if pageSize > 1000 {
+		return nil, 0, errors.New("usage: page_size must be <= 1000")
+	}
+	start := (page - 1) * pageSize
+	if start >= len(ordered) {
+		return []Summary{}, int64(len(ordered)), nil
+	}
+	end := start + pageSize
+	if end > len(ordered) {
+		end = len(ordered)
+	}
+	out := make([]Summary, 0, end-start)
+	for _, item := range ordered[start:end] {
+		out = append(out, item.Summary)
+	}
+	return out, int64(len(ordered)), nil
 }
 
 func formatUSD(nano int64) string { return fmt.Sprintf("%.9f", float64(nano)/1_000_000_000) }

@@ -17,7 +17,7 @@
 记录一次 provider attempt 的 EventID、账号稳定 ID、provider/model、成功/失败状态和 canonical TokenBreakdown；可进入 SDK 插件、文件或 Redis 队列。
 
 ### Account usage event
-`internal/usage.Event` 是持久化统计事件。事件不保存 API key、OAuth token、prompt 或完整响应，只保存账号展示快照、价格快照、priced/unpriced 状态及 nano-USD 成本。SQLite `usage_events` 为事实表，`usage_daily` 为可重建的 UTC 日聚合表，`usage_price_overrides` 保存账号级价格规则。
+`internal/usage.Event` 是持久化统计事件。事件不保存 API key、OAuth token、prompt 或完整响应，只保存账号展示快照、价格快照、priced/unpriced 状态及 nano-USD 成本。SQLite `usage_events` 为事实表，`usage_daily` 为可重建的 UTC 日聚合表，`usage_price_overrides` 保存账号级价格规则。管理接口基于事实表的精确时间戳计算滚动窗口：最近 5 小时、最近 7 天和账号导入后累计；5h/7d 是否输出由当前账号额度信号中的明确窗口决定。
 
 ### TokenBreakdown
 输入 uncached/cache-read/cache-write 与输出（含 reasoning）互斥归一化，reasoning 已包含在 output 中，不重复计费。无法确认协议语义时保留为 unclassified。

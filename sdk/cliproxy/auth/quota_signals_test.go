@@ -132,6 +132,30 @@ func TestQuotaStateObserveResponseHeadersRetainsMeasuredClaudeAndCodexWatermarks
 	}
 }
 
+func TestObservedQuotaWindowsUsesCurrentAccountSignals(t *testing.T) {
+	got := ObservedQuotaWindows("claude", map[string]string{
+		"Anthropic-Ratelimit-Unified-5h-Status":      "allowed",
+		"Anthropic-Ratelimit-Unified-7d-Utilization": "0.42",
+		"Anthropic-Ratelimit-Unified-7d_oi-Status":   "rejected",
+	})
+	want := []string{"5h", "7d"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("ObservedQuotaWindows() = %#v, want %#v", got, want)
+	}
+
+	if got := ObservedQuotaWindows("claude", map[string]string{
+		"Anthropic-Ratelimit-Unified-Status": "allowed",
+	}); len(got) != 0 {
+		t.Fatalf("generic Claude status inferred windows %#v", got)
+	}
+
+	if got := ObservedQuotaWindows("codex", map[string]string{
+		"X-Codex-Primary-Window-Minutes": "10080",
+	}); !reflect.DeepEqual(got, []string{"7d"}) {
+		t.Fatalf("Codex weekly window = %#v, want [7d]", got)
+	}
+}
+
 func TestQuotaStateObserveResponseHeadersDropsKimiGrokAndAntigravitySignals(t *testing.T) {
 	for _, provider := range []string{"kimi", "xai", "grok", "antigravity", "gemini", "vertex", "aistudio"} {
 		quota := QuotaState{

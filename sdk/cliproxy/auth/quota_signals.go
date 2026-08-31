@@ -3,6 +3,7 @@ package auth
 import (
 	"net/http"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -11,6 +12,52 @@ const (
 	maxQuotaSignalHeaders = 64
 	maxQuotaSignalValue   = 512
 )
+
+// ObservedQuotaWindows returns the rolling quota windows explicitly present
+// in the latest account-level quota snapshot. It intentionally does not infer
+// a plan or treat generic status headers as a window.
+func ObservedQuotaWindows(provider string, signals map[string]string) []string {
+	provider = strings.ToLower(strings.TrimSpace(provider))
+	if len(signals) == 0 {
+		return nil
+	}
+	var has5h, has7d bool
+	for rawKey, rawValue := range signals {
+		key := strings.ToLower(strings.TrimSpace(rawKey))
+		value := strings.TrimSpace(rawValue)
+		switch provider {
+		case "claude":
+			if strings.HasPrefix(key, "anthropic-ratelimit-unified-5h-") && value != "" {
+				has5h = true
+			}
+			if strings.HasPrefix(key, "anthropic-ratelimit-unified-7d-") && value != "" {
+				has7d = true
+			}
+		case "codex":
+			if !strings.HasSuffix(key, "-primary-window-minutes") {
+				continue
+			}
+			minutes, err := strconv.Atoi(value)
+			if err != nil {
+				continue
+			}
+			switch minutes {
+			case 300:
+				has5h = true
+			case 10080:
+				has7d = true
+			}
+		}
+	}
+	windows := make([]string, 0, 2)
+	if has5h {
+		windows = append(windows, "5h")
+	}
+	if has7d {
+		windows = append(windows, "7d")
+	}
+	return windows
+}
 
 // ProviderSupportsQuotaObservation reports whether the named provider emits a
 // passive credential-level quota snapshot understood by collectQuotaSignals.
