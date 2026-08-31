@@ -146,6 +146,8 @@ type AntigravityConfig struct {
 // CodexConfig configures provider-wide Codex request behavior.
 type CodexConfig struct {
 	IdentityConfuse bool `yaml:"identity-confuse" json:"identity-confuse"`
+	// DisablePiUpstreamParity restores the legacy Codex request profile for OAuth requests to the default ChatGPT backend.
+	DisablePiUpstreamParity bool `yaml:"disable-pi-upstream-parity" json:"disable-pi-upstream-parity"`
 	// DisableCodexCloaking disables forcing the official Codex identity headers on HTTP/SSE and WebSocket requests.
 	DisableCodexCloaking bool `yaml:"disable-codex-cloaking" json:"disable-codex-cloaking"`
 	// StreamBootstrapBuffering holds back initial handshake events (response.created,

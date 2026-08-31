@@ -73,13 +73,13 @@ func (o *CodexAuth) GenerateAuthURL(state string, pkceCodes *PKCECodes) (string,
 		"client_id":                  {ClientID},
 		"response_type":              {"code"},
 		"redirect_uri":               {RedirectURI},
-		"scope":                      {"openid email profile offline_access"},
+		"scope":                      {"openid profile email offline_access"},
 		"state":                      {state},
 		"code_challenge":             {pkceCodes.CodeChallenge},
 		"code_challenge_method":      {"S256"},
-		"prompt":                     {"login"},
 		"id_token_add_organizations": {"true"},
 		"codex_cli_simplified_flow":  {"true"},
+		"originator":                 {"pi"},
 	}
 
 	authURL := fmt.Sprintf("%s?%s", AuthURL, params.Encode())
@@ -152,17 +152,17 @@ func (o *CodexAuth) ExchangeCodeForTokensWithRedirect(ctx context.Context, code,
 		return nil, fmt.Errorf("failed to parse token response: %w", err)
 	}
 
-	// Extract account ID from ID token
-	claims, err := ParseJWTToken(tokenResp.IDToken)
-	if err != nil {
-		log.Warnf("Failed to parse ID token: %v", err)
+	if strings.TrimSpace(tokenResp.AccessToken) == "" || strings.TrimSpace(tokenResp.RefreshToken) == "" || tokenResp.ExpiresIn <= 0 {
+		return nil, fmt.Errorf("token exchange response is missing required access_token, refresh_token, or expires_in")
 	}
-
-	accountID := ""
-	email := ""
-	if claims != nil {
-		accountID = claims.GetAccountID()
-		email = claims.GetUserEmail()
+	accountID, email, errClaims := codexIdentityFromAccessToken(tokenResp.AccessToken)
+	if errClaims != nil {
+		return nil, fmt.Errorf("token exchange account ID: %w", errClaims)
+	}
+	if email == "" && strings.TrimSpace(tokenResp.IDToken) != "" {
+		if idClaims, errIDToken := ParseJWTToken(tokenResp.IDToken); errIDToken == nil {
+			email = idClaims.GetUserEmail()
+		}
 	}
 
 	// Create token data
@@ -215,7 +215,6 @@ func (o *CodexAuth) refreshTokensSingleFlight(ctx context.Context, refreshToken 
 		"client_id":     {ClientID},
 		"grant_type":    {"refresh_token"},
 		"refresh_token": {refreshToken},
-		"scope":         {"openid profile email"},
 	}
 
 	req, errReq := http.NewRequestWithContext(ctx, "POST", TokenURL, strings.NewReader(data.Encode()))
@@ -257,17 +256,17 @@ func (o *CodexAuth) refreshTokensSingleFlight(ctx context.Context, refreshToken 
 		return nil, fmt.Errorf("failed to parse refresh response: %w", errUnmarshal)
 	}
 
-	// Extract account ID from ID token
-	claims, errParseJWT := ParseJWTToken(tokenResp.IDToken)
-	if errParseJWT != nil {
-		log.Warnf("Failed to parse refreshed ID token: %v", errParseJWT)
+	if strings.TrimSpace(tokenResp.AccessToken) == "" || strings.TrimSpace(tokenResp.RefreshToken) == "" || tokenResp.ExpiresIn <= 0 {
+		return nil, fmt.Errorf("token refresh response is missing required access_token, refresh_token, or expires_in")
 	}
-
-	accountID := ""
-	email := ""
-	if claims != nil {
-		accountID = claims.GetAccountID()
-		email = claims.Email
+	accountID, email, errClaims := codexIdentityFromAccessToken(tokenResp.AccessToken)
+	if errClaims != nil {
+		return nil, fmt.Errorf("token refresh account ID: %w", errClaims)
+	}
+	if email == "" && strings.TrimSpace(tokenResp.IDToken) != "" {
+		if idClaims, errIDToken := ParseJWTToken(tokenResp.IDToken); errIDToken == nil {
+			email = idClaims.GetUserEmail()
+		}
 	}
 
 	return &CodexTokenData{
@@ -278,6 +277,18 @@ func (o *CodexAuth) refreshTokensSingleFlight(ctx context.Context, refreshToken 
 		Email:        email,
 		Expire:       time.Now().Add(time.Duration(tokenResp.ExpiresIn) * time.Second).Format(time.RFC3339),
 	}, nil
+}
+
+func codexIdentityFromAccessToken(accessToken string) (accountID string, email string, err error) {
+	claims, errParse := ParseJWTToken(accessToken)
+	if errParse != nil {
+		return "", "", fmt.Errorf("failed to parse access token claims: %w", errParse)
+	}
+	accountID = strings.TrimSpace(claims.GetAccountID())
+	if accountID == "" {
+		return "", "", fmt.Errorf("failed to extract account ID from access token")
+	}
+	return accountID, claims.GetUserEmail(), nil
 }
 
 // CreateTokenStorage creates a new CodexTokenStorage from a CodexAuthBundle.

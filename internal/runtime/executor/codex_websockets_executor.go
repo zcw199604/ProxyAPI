@@ -4,10 +4,12 @@ package executor
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/config"
 	cliproxyauth "github.com/router-for-me/CLIProxyAPI/v7/sdk/cliproxy/auth"
@@ -41,6 +43,55 @@ type CodexAutoExecutor struct {
 	wsExec   *CodexWebsocketsExecutor
 }
 
+type codexWebsocketPreStartError struct {
+	err error
+}
+
+func (e codexWebsocketPreStartError) Error() string { return e.err.Error() }
+func (e codexWebsocketPreStartError) Unwrap() error { return e.err }
+
+func (e codexWebsocketPreStartError) StatusCode() int {
+	if provider, ok := e.err.(interface{ StatusCode() int }); ok {
+		return provider.StatusCode()
+	}
+	return 0
+}
+
+func (e codexWebsocketPreStartError) RetryAfter() *time.Duration {
+	if provider, ok := e.err.(interface{ RetryAfter() *time.Duration }); ok {
+		return provider.RetryAfter()
+	}
+	return nil
+}
+
+func (e codexWebsocketPreStartError) Headers() http.Header {
+	if provider, ok := e.err.(interface{ Headers() http.Header }); ok {
+		return provider.Headers()
+	}
+	return nil
+}
+
+func isCodexWebsocketPreStartError(err error) bool {
+	var target codexWebsocketPreStartError
+	return errors.As(err, &target)
+}
+
+func isPiCodexWebsocketRetryError(err error) bool {
+	if err == nil {
+		return false
+	}
+	raw := strings.ToLower(err.Error())
+	return strings.Contains(raw, "websocket_connection_limit_reached") || strings.Contains(raw, "previous_response_not_found")
+}
+
+func (e *CodexAutoExecutor) piWebsocketPreferred(auth *cliproxyauth.Auth, opts cliproxyexecutor.Options) bool {
+	if e == nil || e.httpExec == nil {
+		return false
+	}
+	_, baseURL := codexCreds(auth)
+	return isPiCodexUpstream(e.httpExec.cfg, auth, baseURL, opts.Alt)
+}
+
 func NewCodexAutoExecutor(cfg *config.Config) *CodexAutoExecutor {
 	return &CodexAutoExecutor{
 		httpExec: NewCodexExecutor(cfg),
@@ -68,8 +119,16 @@ func (e *CodexAutoExecutor) Execute(ctx context.Context, auth *cliproxyauth.Auth
 	if e == nil || e.httpExec == nil || e.wsExec == nil {
 		return cliproxyexecutor.Response{}, fmt.Errorf("codex auto executor: executor is nil")
 	}
-	if cliproxyexecutor.DownstreamWebsocket(ctx) && codexWebsocketsEnabled(auth) {
-		return e.wsExec.Execute(ctx, auth, req, opts)
+	piPreferred := e.piWebsocketPreferred(auth, opts)
+	if piPreferred || (cliproxyexecutor.DownstreamWebsocket(ctx) && codexWebsocketsEnabled(auth)) {
+		response, err := e.wsExec.Execute(ctx, auth, req, opts)
+		if piPreferred && isPiCodexWebsocketRetryError(err) {
+			response, err = e.wsExec.Execute(ctx, auth, req, opts)
+		}
+		if err == nil || !piPreferred || cliproxyexecutor.RequiredUpstreamWebsocket(ctx) || !isCodexWebsocketPreStartError(err) {
+			return response, err
+		}
+		return e.httpExec.Execute(ctx, auth, req, opts)
 	}
 	if cliproxyexecutor.RequiredUpstreamWebsocket(ctx) {
 		return cliproxyexecutor.Response{}, cliproxyexecutor.NewUpstreamWebsocketReplayRequiredError()
@@ -81,8 +140,16 @@ func (e *CodexAutoExecutor) ExecuteStream(ctx context.Context, auth *cliproxyaut
 	if e == nil || e.httpExec == nil || e.wsExec == nil {
 		return nil, fmt.Errorf("codex auto executor: executor is nil")
 	}
-	if cliproxyexecutor.DownstreamWebsocket(ctx) && codexWebsocketsEnabled(auth) {
-		return e.wsExec.ExecuteStream(ctx, auth, req, opts)
+	piPreferred := e.piWebsocketPreferred(auth, opts)
+	if piPreferred || (cliproxyexecutor.DownstreamWebsocket(ctx) && codexWebsocketsEnabled(auth)) {
+		result, err := e.wsExec.ExecuteStream(ctx, auth, req, opts)
+		if piPreferred && isPiCodexWebsocketRetryError(err) {
+			result, err = e.wsExec.ExecuteStream(ctx, auth, req, opts)
+		}
+		if err == nil || !piPreferred || cliproxyexecutor.RequiredUpstreamWebsocket(ctx) || !isCodexWebsocketPreStartError(err) {
+			return result, err
+		}
+		return e.httpExec.ExecuteStream(ctx, auth, req, opts)
 	}
 	if cliproxyexecutor.RequiredUpstreamWebsocket(ctx) {
 		return nil, cliproxyexecutor.NewUpstreamWebsocketReplayRequiredError()

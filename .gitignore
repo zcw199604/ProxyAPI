@@ -30,6 +30,7 @@ auths/*
 
 # Documentation
 docs/*
+!docs/pi-codex-auth-replication.md
 AGENTS.md
 CLAUDE.md
 GEMINI.md

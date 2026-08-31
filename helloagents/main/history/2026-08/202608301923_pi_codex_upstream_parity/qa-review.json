@@ -1,0 +1,113 @@
+{
+  "schema_version": 3,
+  "qa_mode": "standard",
+  "scope": "OAuth credentials targeting the default ChatGPT Codex /responses backend, frozen to earendil-works/pi@853a80d26c90a14c1886f0ebb8ffaae133ca2185",
+  "outcome": "findings",
+  "gate_status": "passed",
+  "conclusion": "The isolated Pi upstream profile is implemented and its OAuth, profile selection, payload, SSE zstd, WebSocket identity/retry/lifecycle, rollback, and legacy compatibility tests pass. The server build passes. Full-suite failures are confined to untouched Home, Git store, and xAI timing tests and are recorded as P2 environment/pre-existing findings.",
+  "findings": [
+    {
+      "severity": "P2",
+      "status": "open",
+      "title": "Full repository suite has unrelated environment and timing failures",
+      "evidence": "go test ./... failed in internal/home TestGetPluginSyncCancellationInterruptsRead after 120s, internal/store Git corruption recovery because Windows denied renaming temporary .git directories, and internal/runtime/executor xAI image/video TTFT assertions that intermittently observed 0s. None of those production or test files were changed by this plan; the affected Codex/Auth/Config test scope passes."
+    }
+  ],
+  "file_references": [
+    "internal/auth/codex/openai_auth.go",
+    "internal/auth/codex/openai_auth_test.go",
+    "internal/config/config_types.go",
+    "internal/config/codex_pi_parity_test.go",
+    "internal/runtime/executor/codex_pi_contract.go",
+    "internal/runtime/executor/codex_pi_contract_test.go",
+    "internal/runtime/executor/codex_executor_execute.go",
+    "internal/runtime/executor/codex_executor_stream.go",
+    "internal/runtime/executor/codex_websockets_executor.go",
+    "internal/runtime/executor/codex_websockets_execute.go",
+    "internal/runtime/executor/codex_websockets_stream.go",
+    "internal/runtime/executor/codex_websockets_session.go",
+    "internal/runtime/executor/helps/pi_user_agent.go",
+    "docs/pi-codex-auth-replication.md",
+    "config.example.yaml"
+  ],
+  "commands": [
+    {
+      "command": "go test ./internal/auth/codex ./internal/config -count=1; go test ./internal/runtime/executor -run 'Test(PiCodex|NormalizePiCodex|CompressPiCodex|CodexWebsockets|ApplyCodex)' -count=1",
+      "result": "passed",
+      "note": "OAuth, config, isolated Pi contract, zstd, WebSocket, and existing Codex header/session compatibility tests passed."
+    },
+    {
+      "command": "go test ./...",
+      "result": "failed",
+      "note": "Unrelated Home timeout, Windows temporary .git rename denial, and xAI TTFT timing failures; all other reported packages passed."
+    },
+    {
+      "command": "go build -o test-output ./cmd/server",
+      "result": "passed",
+      "note": "Required server compilation passed; test-output was removed."
+    },
+    {
+      "command": "git diff --check",
+      "result": "passed",
+      "note": "No whitespace errors."
+    }
+  ],
+  "task_verification": [
+    {
+      "task": "0.1-2.2",
+      "status": "passed",
+      "evidence": "Scope is isolated to OAuth/default /responses; frozen commit metadata, OAuth strict claim handling, config rollback, and profile-selection tests pass."
+    },
+    {
+      "task": "3.1-3.5",
+      "status": "passed",
+      "evidence": "Pi payload/header ownership and level-3 zstd round-trip tests pass; HTTP Execute and ExecuteStream use the isolated final request builder."
+    },
+    {
+      "task": "4.1-4.5",
+      "status": "passed",
+      "evidence": "Pi WebSocket headers, auto preference, retry classification, safe pre-start fallback, legacy header compatibility, five-minute liveness, and 55-minute max-age behavior are implemented and tested."
+    },
+    {
+      "task": "5.1-6.2",
+      "status": "passed",
+      "evidence": "No new token/JWT logging was found; legacy API-key/custom-base behavior is retained; config, reproduction guide, knowledge base, and changelog are synchronized."
+    },
+    {
+      "task": "7.1-7.4",
+      "status": "partial",
+      "evidence": "Formatting, targeted tests, build, and QA evidence passed. Full-suite unrelated failures are recorded as P2."
+    }
+  ],
+  "tdd": {
+    "classification": "mandatory",
+    "decision": "tdd",
+    "target_behaviors": [
+      "Pi OAuth URL and strict access-token account identity",
+      "isolated default-backend profile with rollback and legacy compatibility",
+      "Pi payload and final SSE headers with zstd level 3",
+      "Pi WebSocket headers, auto preference, single retry, safe fallback, account isolation, idle and maximum age"
+    ],
+    "red": {
+      "command": "go test ./internal/auth/codex -run 'TestCodex(AuthURLMatchesPiContract|RefreshRejectsMissingAccessTokenAccountID)' -count=1; go test ./internal/config ./internal/runtime/executor -run 'Test(CodexPiUpstreamParityConfig|PiCodex|NormalizePiCodex)' -count=1",
+      "result": "failed",
+      "summary": "OAuth tests failed for missing originator and accepted missing access-token account ID; config/contract tests initially failed to compile because the Pi profile, config, payload, headers, and compression helpers did not exist."
+    },
+    "green": {
+      "command": "go test ./internal/auth/codex ./internal/config -count=1; go test ./internal/runtime/executor -run 'Test(PiCodex|NormalizePiCodex|CompressPiCodex|CodexWebsockets|ApplyCodex)' -count=1",
+      "result": "passed",
+      "summary": "The minimal isolated profile implementation and existing compatibility tests pass."
+    },
+    "refactor": {
+      "performed": true,
+      "command": "go test ./internal/auth/codex ./internal/config -count=1; go test ./internal/runtime/executor -run 'Test(PiCodex|NormalizePiCodex|CompressPiCodex|CodexWebsockets|ApplyCodex)' -count=1",
+      "result": "passed",
+      "summary": "Shared Pi identity, session, payload, and transport helpers were centralized without changing legacy header constants."
+    },
+    "verify": {
+      "command": "go build -o test-output ./cmd/server",
+      "result": "passed",
+      "summary": "Required compile gate passed; full-suite unrelated failures remain documented as P2."
+    }
+  }
+}

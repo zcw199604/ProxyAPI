@@ -56,6 +56,7 @@ type codexWebsocketSession struct {
 	connCloser                *websocketConnectionCloser
 	wsURL                     string
 	authID                    string
+	connCreatedAt             time.Time
 	multiAgentV2OptimizedConn *websocket.Conn
 	lifecycleBindMu           sync.Mutex
 	lifecycle                 cliproxyexecutor.ExecutionLifecycle
@@ -297,6 +298,7 @@ func (s *codexWebsocketSession) detachConnection(conn *websocket.Conn, lifecycle
 		closer = s.connCloser
 		s.conn = nil
 		s.connCloser = nil
+		s.connCreatedAt = time.Time{}
 		s.multiAgentV2OptimizedConn = nil
 		if s.readerConn == conn {
 			s.readerConn = nil
@@ -344,7 +346,8 @@ func existingWebsocketSessionConn(sess *codexWebsocketSession, authID string, ws
 	closer := sess.connCloser
 	matches := conn != nil && closer != nil &&
 		strings.TrimSpace(sess.authID) == strings.TrimSpace(authID) &&
-		strings.TrimSpace(sess.wsURL) == strings.TrimSpace(wsURL)
+		strings.TrimSpace(sess.wsURL) == strings.TrimSpace(wsURL) &&
+		(sess.connCreatedAt.IsZero() || time.Since(sess.connCreatedAt) < codexResponsesWebsocketMaxAge)
 	sess.connMu.Unlock()
 	if !matches || sess.upstreamDisconnectError(conn) != nil {
 		return nil, nil
@@ -372,6 +375,7 @@ func detachMismatchedWebsocketSessionConn(sess *codexWebsocketSession, authID st
 	sess.lifecycleModel = ""
 	sess.conn = nil
 	sess.connCloser = nil
+	sess.connCreatedAt = time.Time{}
 	sess.multiAgentV2OptimizedConn = nil
 	if sess.readerConn == conn {
 		sess.readerConn = nil
@@ -498,6 +502,14 @@ func (e *CodexWebsocketsExecutor) ensureUpstreamConn(ctx context.Context, auth *
 			staleLifecycle.End("target_changed")
 		}
 	}
+	if expiredConn, expiredCloser := detachExpiredWebsocketSessionConn(sess); expiredConn != nil {
+		logCodexWebsocketDisconnected(sess.sessionID, authID, wsURL, "max_age", nil)
+		if expiredCloser != nil {
+			if errClose := expiredCloser.Close(); errClose != nil {
+				log.Errorf("codex websockets executor: close max-age websocket error: %v", errClose)
+			}
+		}
+	}
 
 	sess.connMu.Lock()
 	conn := sess.conn
@@ -535,6 +547,7 @@ func (e *CodexWebsocketsExecutor) ensureUpstreamConn(ctx context.Context, auth *
 	sess.multiAgentV2OptimizedConn = nil
 	sess.wsURL = wsURL
 	sess.authID = authID
+	sess.connCreatedAt = time.Now()
 	sess.readerConn = conn
 	sess.connMu.Unlock()
 
@@ -542,6 +555,27 @@ func (e *CodexWebsocketsExecutor) ensureUpstreamConn(ctx context.Context, auth *
 	go e.readUpstreamLoop(sess, conn)
 	logCodexWebsocketConnected(sess.sessionID, authID, wsURL)
 	return conn, closer, resp, nil
+}
+
+func detachExpiredWebsocketSessionConn(sess *codexWebsocketSession) (*websocket.Conn, *websocketConnectionCloser) {
+	if sess == nil {
+		return nil, nil
+	}
+	sess.connMu.Lock()
+	defer sess.connMu.Unlock()
+	if sess.conn == nil || sess.connCreatedAt.IsZero() || time.Since(sess.connCreatedAt) < codexResponsesWebsocketMaxAge {
+		return nil, nil
+	}
+	conn := sess.conn
+	closer := sess.connCloser
+	sess.conn = nil
+	sess.connCloser = nil
+	sess.readerConn = nil
+	sess.multiAgentV2OptimizedConn = nil
+	sess.lifecycle = nil
+	sess.lifecycleModel = ""
+	sess.connCreatedAt = time.Time{}
+	return conn, closer
 }
 
 func (e *CodexWebsocketsExecutor) readUpstreamLoop(sess *codexWebsocketSession, conn *websocket.Conn) {
@@ -630,6 +664,7 @@ func (e *CodexWebsocketsExecutor) invalidateUpstreamConnWithNotify(sess *codexWe
 	sess.lifecycleModel = ""
 	sess.conn = nil
 	sess.connCloser = nil
+	sess.connCreatedAt = time.Time{}
 	sess.multiAgentV2OptimizedConn = nil
 	if sess.readerConn == conn {
 		sess.readerConn = nil
@@ -722,6 +757,7 @@ func closeCodexWebsocketSession(sess *codexWebsocketSession, reason string) {
 	sess.lifecycleModel = ""
 	sess.conn = nil
 	sess.connCloser = nil
+	sess.connCreatedAt = time.Time{}
 	sess.multiAgentV2OptimizedConn = nil
 	if sess.readerConn == conn {
 		sess.readerConn = nil

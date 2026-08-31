@@ -232,6 +232,11 @@ routing:
 
 # Codex provider behavior.
 codex:
+  # Restore the legacy Codex upstream profile instead of Pi parity for OAuth requests
+  # to https://chatgpt.com/backend-api/codex/responses. API-key credentials, custom
+  # base URLs, compact, images, and realtime requests always keep their legacy behavior.
+  # Pi parity is frozen to earendil-works/pi commit 853a80d26c90a14c1886f0ebb8ffaae133ca2185.
+  disable-pi-upstream-parity: false
   # When true, and routing.strategy is fill-first or routing.session-affinity is true,
   # remap Codex prompt_cache_key and installation identity per selected auth.
   # Some superstitious users believe request tracking identifiers can be used
