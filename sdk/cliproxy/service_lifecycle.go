@@ -49,10 +49,26 @@ func (s *Service) Run(ctx context.Context) error {
 		s.homeMu.Unlock()
 	}()
 
-	usage.StartDefault(ctx)
 	homeEnabled := s.cfg != nil && s.cfg.Home.Enabled
 	if homeEnabled {
 		forceHomeRuntimeConfig(s.cfg)
+	}
+	usage.StartDefault(ctx)
+	if err := s.initUsageServices(ctx); err != nil {
+		if s.pricingService != nil {
+			s.pricingService.Stop()
+			s.pricingService = nil
+		}
+		usage.StopDefault()
+		return err
+	}
+	if s.statsPlugin != nil {
+		s.serverOptions = append(s.serverOptions, api.WithStatsPlugin(s.statsPlugin))
+	}
+	if s.pricingService != nil {
+		s.serverOptions = append(s.serverOptions, api.WithPricingService(s.pricingService))
+	}
+	if homeEnabled {
 		redisqueue.SetUsageStatisticsEnabled(true)
 	}
 
@@ -325,6 +341,19 @@ func (s *Service) Shutdown(ctx context.Context) error {
 					shutdownErr = err
 				}
 			}
+		}
+		if s.pricingService != nil {
+			s.pricingService.Stop()
+		}
+		if s.statsPlugin != nil {
+			if err := s.statsPlugin.Close(); err != nil {
+				log.Errorf("failed to close usage statistics: %v", err)
+				if shutdownErr == nil {
+					shutdownErr = err
+				}
+			}
+			s.statsPlugin = nil
+			usage.UnregisterNamedPlugin("account-stats")
 		}
 
 		if s.pluginHost != nil {

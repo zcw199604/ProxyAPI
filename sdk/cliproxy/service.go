@@ -12,6 +12,8 @@ import (
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/home"
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/homeplugins"
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/pluginhost"
+	internalusage "github.com/router-for-me/CLIProxyAPI/v7/internal/usage"
+	"github.com/router-for-me/CLIProxyAPI/v7/internal/usage/pricing"
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/watcher"
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/wsrelay"
 	sdkaccess "github.com/router-for-me/CLIProxyAPI/v7/sdk/access"
@@ -99,7 +101,9 @@ type Service struct {
 	shutdownOnce sync.Once
 
 	// wsGateway manages websocket Gemini providers.
-	wsGateway *wsrelay.Manager
+	wsGateway      *wsrelay.Manager
+	statsPlugin    *internalusage.StatsPlugin
+	pricingService *pricing.SyncService
 
 	homeLifecycleMu              sync.Mutex
 	homeOwnershipMu              sync.Mutex

@@ -56,6 +56,15 @@ type Config struct {
 
 	// UsageStatisticsEnabled toggles in-memory usage aggregation; when false, usage data is discarded.
 	UsageStatisticsEnabled bool `yaml:"usage-statistics-enabled" json:"usage-statistics-enabled"`
+	// UsageStatsDBPath is the durable SQLite path for provider-attempt statistics.
+	UsageStatsDBPath string `yaml:"usage-stats-db-path" json:"usage-stats-db-path"`
+	// UsageStatsRetentionDays controls optional event retention; zero keeps history indefinitely.
+	UsageStatsRetentionDays int `yaml:"usage-stats-retention-days" json:"usage-stats-retention-days"`
+	// PricingSyncEnabled enables loading and periodic synchronization of model prices.
+	PricingSyncEnabled  bool   `yaml:"pricing-sync-enabled" json:"pricing-sync-enabled"`
+	PricingSyncURL      string `yaml:"pricing-sync-url" json:"pricing-sync-url"`
+	PricingSyncInterval string `yaml:"pricing-sync-interval" json:"pricing-sync-interval"`
+	PricingDataDir      string `yaml:"pricing-data-dir" json:"pricing-data-dir"`
 
 	// RedisUsageQueueRetentionSeconds controls how long usage queue items are retained
 	// in memory for Management API consumers.

@@ -9,6 +9,8 @@ import (
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/config"
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/logging"
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/pluginhost"
+	internalusage "github.com/router-for-me/CLIProxyAPI/v7/internal/usage"
+	"github.com/router-for-me/CLIProxyAPI/v7/internal/usage/pricing"
 	"github.com/router-for-me/CLIProxyAPI/v7/sdk/api/handlers"
 	"github.com/router-for-me/CLIProxyAPI/v7/sdk/cliproxy/auth"
 )
@@ -25,6 +27,8 @@ type serverOptionConfig struct {
 	postAuthHook          auth.PostAuthHook
 	postAuthPersistHook   auth.PostAuthHook
 	pluginHost            *pluginhost.Host
+	statsPlugin           *internalusage.StatsPlugin
+	pricingService        *pricing.SyncService
 	configReloadHook      func(context.Context, *config.Config)
 	exampleAPIKeySafeMode bool
 }
@@ -118,6 +122,16 @@ func WithPluginHost(host *pluginhost.Host) ServerOption {
 	return func(cfg *serverOptionConfig) {
 		cfg.pluginHost = host
 	}
+}
+
+// WithStatsPlugin attaches the durable account statistics sink to management APIs.
+func WithStatsPlugin(plugin *internalusage.StatsPlugin) ServerOption {
+	return func(cfg *serverOptionConfig) { cfg.statsPlugin = plugin }
+}
+
+// WithPricingService attaches the model pricing synchronization service.
+func WithPricingService(service *pricing.SyncService) ServerOption {
+	return func(cfg *serverOptionConfig) { cfg.pricingService = service }
 }
 
 // WithConfigReloadHook registers a callback used after management saves config changes.

@@ -18,6 +18,8 @@ import (
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/config"
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/pluginhost"
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/pluginstore"
+	internalusage "github.com/router-for-me/CLIProxyAPI/v7/internal/usage"
+	"github.com/router-for-me/CLIProxyAPI/v7/internal/usage/pricing"
 	sdkAuth "github.com/router-for-me/CLIProxyAPI/v7/sdk/auth"
 	coreauth "github.com/router-for-me/CLIProxyAPI/v7/sdk/cliproxy/auth"
 	log "github.com/sirupsen/logrus"
@@ -55,6 +57,8 @@ type Handler struct {
 	postAuthHook            coreauth.PostAuthHook
 	postAuthPersistHook     coreauth.PostAuthHook
 	pluginHost              *pluginhost.Host
+	statsPlugin             *internalusage.StatsPlugin
+	pricingService          *pricing.SyncService
 	configReloadHook        func(context.Context, *config.Config)
 	pluginStoreRegistryURL  string
 	pluginStoreHTTPClient   pluginstore.HTTPDoer
@@ -147,6 +151,26 @@ func (h *Handler) SetPluginHost(host *pluginhost.Host) {
 	}
 	h.mu.Lock()
 	h.pluginHost = host
+	h.mu.Unlock()
+}
+
+// SetStatsPlugin attaches the durable usage statistics service.
+func (h *Handler) SetStatsPlugin(plugin *internalusage.StatsPlugin) {
+	if h == nil {
+		return
+	}
+	h.mu.Lock()
+	h.statsPlugin = plugin
+	h.mu.Unlock()
+}
+
+// SetPricingService attaches the model price catalog service.
+func (h *Handler) SetPricingService(service *pricing.SyncService) {
+	if h == nil {
+		return
+	}
+	h.mu.Lock()
+	h.pricingService = service
 	h.mu.Unlock()
 }
 

@@ -17,6 +17,7 @@ import (
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/config"
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/credentialweight"
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/registry"
+	internalusage "github.com/router-for-me/CLIProxyAPI/v7/internal/usage"
 	coreauth "github.com/router-for-me/CLIProxyAPI/v7/sdk/cliproxy/auth"
 	log "github.com/sirupsen/logrus"
 	"github.com/tidwall/gjson"
@@ -344,6 +345,9 @@ func (h *Handler) buildAuthFileEntryLocked(auth *coreauth.Auth) gin.H {
 	entry["success"] = auth.Success
 	entry["failed"] = auth.Failed
 	entry["recent_requests"] = auth.RecentRequestsSnapshot(time.Now())
+	if stats := h.accountUsageStats(auth.ID); stats != nil {
+		entry["usage_stats"] = stats
+	}
 	entry["quota"] = quotaObservationPayloadForProvider(auth.Provider, auth.Quota)
 	if modelQuotas := modelQuotaObservationPayload(auth.Provider, auth.ModelStates); len(modelQuotas) > 0 {
 		entry["model_quotas"] = modelQuotas
@@ -443,6 +447,43 @@ func authFileRequestRetryFromJSON(data []byte) (int, bool) {
 		return 0, false
 	}
 	return (&coreauth.Auth{Metadata: metadata}).RequestRetryOverride()
+}
+
+// accountUsageStats returns a bounded, credential-free snapshot suitable for
+// embedding next to an auth-file/quota entry in the management response.
+func (h *Handler) accountUsageStats(authID string) gin.H {
+	if h == nil || strings.TrimSpace(authID) == "" {
+		return nil
+	}
+	h.mu.Lock()
+	plugin := h.statsPlugin
+	h.mu.Unlock()
+	if plugin == nil {
+		return nil
+	}
+	items, _, err := plugin.Query(internalusage.Query{AuthID: authID, GroupBy: "model", Page: 1, PageSize: 1000})
+	if err != nil {
+		return nil
+	}
+	var requestCount, successCount, failedCount, inputTokens, outputTokens, reasoningTokens, totalTokens, priced, unpriced, cost int64
+	for _, item := range items {
+		requestCount += item.RequestCount
+		successCount += item.SuccessCount
+		failedCount += item.FailedCount
+		inputTokens += item.InputTokens
+		outputTokens += item.OutputTokens
+		reasoningTokens += item.ReasoningTokens
+		totalTokens += item.TotalTokens
+		priced += item.PricedRequestCount
+		unpriced += item.UnpricedRequestCount
+		cost += item.TotalCostNanoUSD
+	}
+	return gin.H{
+		"request_count": requestCount, "success_count": successCount, "failed_count": failedCount,
+		"input_tokens": inputTokens, "output_tokens": outputTokens, "reasoning_tokens": reasoningTokens,
+		"total_tokens": totalTokens, "priced_request_count": priced, "unpriced_request_count": unpriced,
+		"total_cost_usd": fmt.Sprintf("%.9f", float64(cost)/1_000_000_000),
+	}
 }
 
 // quotaObservationPayload exposes only passive provider observations. Cooldown

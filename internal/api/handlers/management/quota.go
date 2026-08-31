@@ -61,9 +61,13 @@ func (h *Handler) ResetQuota(c *gin.Context) {
 	}
 	updated.EnsureIndex()
 
-	c.JSON(http.StatusOK, gin.H{
+	response := gin.H{
 		"status":     "ok",
 		"auth_index": updated.Index,
 		"models":     models,
-	})
+	}
+	if stats := h.accountUsageStats(updated.ID); stats != nil {
+		response["usage_stats"] = stats
+	}
+	c.JSON(http.StatusOK, response)
 }

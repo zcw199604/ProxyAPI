@@ -125,6 +125,16 @@ error-logs-max-files: 10
 # When false, disable in-memory usage statistics aggregation
 usage-statistics-enabled: false
 
+# Durable account request/token/cost statistics (SQLite, relative to the working directory).
+usage-stats-db-path: data/usage.db
+# Set to 0 to retain the event history indefinitely.
+usage-stats-retention-days: 0
+# Load model prices from the sub2api-compatible catalog and refresh periodically.
+pricing-sync-enabled: true
+pricing-sync-url: https://raw.githubusercontent.com/Wei-Shaw/sub2api/main/backend/resources/model-pricing/model_prices_and_context_window.json
+pricing-sync-interval: 24h
+pricing-data-dir: data
+
 # How long (in seconds) usage queue items are retained in memory for the Management API.
 # The local Redis RESP usage output is disabled.
 # Default: 60. Max: 3600.

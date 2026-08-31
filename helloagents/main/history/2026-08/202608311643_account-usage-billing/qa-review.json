@@ -1,0 +1,38 @@
+{
+  "schema_version": 3,
+  "qa_mode": "standard",
+  "scope": "Account provider-attempt usage statistics, sub2api-compatible pricing sync, account price overrides, SQLite persistence, and Management API",
+  "outcome": "findings",
+  "gate_status": "passed_with_unrelated_failures",
+  "conclusion": "Targeted usage, pricing, config, management, SDK, and server build gates pass. Auth-file management entries now embed credential-free usage_stats so the quota/account list can render cumulative requests, tokens, and cost. The full repository suite reports unrelated pre-existing Windows/cache timing failures in untouched packages.",
+  "findings": [
+    {
+      "severity": "P2",
+      "status": "open",
+      "title": "Full repository suite has unrelated environment/timing failures",
+      "evidence": "go test ./... failed in internal/cache and internal/store tests that do not touch this change; targeted changed-package tests pass."
+    },
+    {
+      "severity": "P2",
+      "status": "open",
+      "title": "Statistics are single-instance SQLite only",
+      "evidence": "The implementation intentionally does not add shared Postgres/object-store aggregation or a management frontend, per scope boundary."
+    }
+  ],
+  "commands": [
+    {"command": "go test ./internal/usage/... ./internal/config/... ./sdk/cliproxy/usage/...", "result": "passed"},
+    {"command": "go test ./internal/api/handlers/management ./internal/api ./sdk/cliproxy", "result": "passed"},
+    {"command": "go test ./...", "result": "failed", "note": "Unrelated internal/cache and internal/store failures; changed packages passed."},
+    {"command": "go mod verify", "result": "passed"},
+    {"command": "go build -o cli-proxy-api ./cmd/server", "result": "passed"},
+    {"command": "gofmt -w .", "result": "passed"}
+  ],
+  "tdd": {
+    "classification": "mandatory",
+    "decision": "tdd",
+    "red": {"result": "passed", "summary": "Initial parser/accounting tests failed before production pricing and accounting implementations existed."},
+    "green": {"result": "passed", "summary": "Pricing parsing, token cost calculation, event idempotency, SQLite aggregation, overrides, and sync tests pass."},
+    "refactor": {"result": "passed", "summary": "Lifecycle, management handlers, configuration defaults, and catalog update callback were integrated without changing translator/executor contracts."},
+    "verify": {"result": "partial", "summary": "Changed-package tests, module verification, formatting, and server build pass; unrelated full-suite failures remain recorded above."}
+  }
+}

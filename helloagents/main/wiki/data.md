@@ -14,5 +14,10 @@
 思考级别、预算和开关的规范化表示，由 `internal/thinking` 校验后转换为 provider 参数。
 
 ### Usage record
-记录请求、输入/输出 token、provider/model 和使用量统计，可进入文件或 Redis 队列。
+记录一次 provider attempt 的 EventID、账号稳定 ID、provider/model、成功/失败状态和 canonical TokenBreakdown；可进入 SDK 插件、文件或 Redis 队列。
 
+### Account usage event
+`internal/usage.Event` 是持久化统计事件。事件不保存 API key、OAuth token、prompt 或完整响应，只保存账号展示快照、价格快照、priced/unpriced 状态及 nano-USD 成本。SQLite `usage_events` 为事实表，`usage_daily` 为可重建的 UTC 日聚合表，`usage_price_overrides` 保存账号级价格规则。
+
+### TokenBreakdown
+输入 uncached/cache-read/cache-write 与输出（含 reasoning）互斥归一化，reasoning 已包含在 output 中，不重复计费。无法确认协议语义时保留为 unclassified。

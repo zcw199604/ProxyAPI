@@ -50,3 +50,34 @@ func TestRecordOmittedGenerateIsEnabled(t *testing.T) {
 		t.Fatalf("GenerateEnabled(omitted) = false, want true")
 	}
 }
+
+func TestManagerPublishAssignsEventID(t *testing.T) {
+	m := NewManager(1)
+	plugin := pluginFunc(func(_ context.Context, record Record) {
+		if record.EventID == "" {
+			t.Errorf("generated EventID is empty")
+		}
+	})
+	m.Register(plugin)
+	m.Start(context.Background())
+	m.Publish(context.Background(), Record{Provider: "test"})
+	m.Stop()
+}
+
+func TestManagerPublishPreservesEventID(t *testing.T) {
+	m := NewManager(1)
+	want := "event-fixed"
+	plugin := pluginFunc(func(_ context.Context, record Record) {
+		if record.EventID != want {
+			t.Errorf("EventID = %q, want %q", record.EventID, want)
+		}
+	})
+	m.Register(plugin)
+	m.Start(context.Background())
+	m.Publish(context.Background(), Record{EventID: want})
+	m.Stop()
+}
+
+type pluginFunc func(context.Context, Record)
+
+func (f pluginFunc) HandleUsage(ctx context.Context, record Record) { f(ctx, record) }

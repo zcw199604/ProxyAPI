@@ -141,6 +141,9 @@ func (s *Service) applyConfigRuntime(ctx context.Context, commit configCommit, s
 	if !s.applyManagerConfig(ctx, commit) {
 		return false
 	}
+	if s.statsPlugin != nil {
+		s.statsPlugin.SetEnabled(cfg.UsageStatisticsEnabled)
+	}
 	if errContext := ctx.Err(); errContext != nil {
 		return false
 	}
