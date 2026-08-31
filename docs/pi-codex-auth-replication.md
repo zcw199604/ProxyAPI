@@ -4,19 +4,9 @@ This document describes the reproducible upstream contract implemented by this r
 
 ## Scope
 
-Pi parity is enabled by default only when all of the following are true:
+Every request selected for the `codex` provider uses this Pi contract. There is no legacy Codex upstream profile and no rollback switch. The default target is the ChatGPT Codex Responses backend; a configured base URL may redirect the target for local or compatible gateways, but it no longer selects a different request profile. Credentials must contain a valid access-token JWT and `chatgpt_account_id`, whether supplied by OAuth storage or an explicit credential field, or the request fails before an upstream connection is made.
 
-- The selected provider is `codex`.
-- The credential is explicitly classified as OAuth.
-- The upstream base URL is empty or exactly `https://chatgpt.com/backend-api/codex`, ignoring a trailing slash.
-- The operation is the ordinary `/responses` operation.
-
-API-key credentials, custom base URLs, `/responses/compact`, images, and realtime/live operations retain the legacy CLIProxyAPI behavior. Set the following emergency rollback option to restore the legacy request profile for otherwise eligible OAuth requests:
-
-```yaml
-codex:
-  disable-pi-upstream-parity: true
-```
+Former dedicated `/responses/compact` and direct Images upstream paths are removed. Those downstream operations now enter the same Pi Responses pipeline as every other Codex request. Realtime/live remains a separate provider implementation rather than a Codex Responses request.
 
 ## OAuth Login Contract
 
@@ -87,11 +77,12 @@ Existing downstream translators first produce a Codex Responses payload. Immedia
 
 An explicit non-empty instruction, text verbosity, or tool choice is retained because Pi exposes those values as request options. The translated `input`, `tools`, `reasoning`, `temperature`, and `service_tier` fields are retained. The following non-Pi fields are removed from an ordinary request:
 
-- `previous_response_id`
 - `generate`
 - `prompt_cache_retention`
 - `safety_identifier`
 - `stream_options`
+
+A caller-supplied `previous_response_id` is preserved for an initial request; reusable WebSocket sessions may replace it with the connection-scoped continuation described below.
 
 When a session ID is present, it is Unicode-clamped to 64 code points and sent as `prompt_cache_key`. A caller-supplied `prompt_cache_key` has priority, followed by the execution or derived session identity. No random prompt-cache key is generated when there is no Pi session.
 
@@ -144,7 +135,9 @@ session-id: <same value>
 
 `Accept` and `Content-Type` are removed from the WebSocket handshake. The JSON frame is uncompressed and adds `"type":"response.create"`, matching the Responses WebSocket protocol.
 
-Reusable WebSocket connections are isolated by execution session and selected credential target. They have a five-minute liveness/idle deadline and a maximum age of 55 minutes. A failed WebSocket handshake before any response event can fall back to the SSE implementation; failures after streaming starts are not replayed, preventing duplicate tool execution or billing.
+Reusable WebSocket connections are isolated by execution session and access-token account ID. They have a five-minute liveness/idle deadline and a maximum age of 55 minutes. A failed WebSocket handshake before any response event can fall back to the SSE implementation; that session remains pinned to SSE afterward. Failures after streaming starts are not replayed, preventing duplicate tool execution or billing.
+
+When a reusable connection has a compatible prior turn, the next request uses Pi's connection-scoped continuation form: `previous_response_id` identifies the prior response and `input` contains only the new suffix. If the request shape or input prefix no longer matches, the continuation is discarded and the full context is sent.
 
 ## Reproduction Checks
 
@@ -154,7 +147,7 @@ No live OpenAI credential is required. Run the local contract and compatibility 
 go test ./internal/auth/codex ./internal/runtime/executor ./internal/config -count=1
 ```
 
-The tests use synthetic JWTs and local HTTP/WebSocket servers. They verify OAuth parameters, access-token claim extraction, profile isolation, Pi-owned header precedence, payload normalization, zstd round-trip behavior, WebSocket header differences, and legacy API-key/custom-endpoint behavior.
+The tests use synthetic JWTs and local HTTP/WebSocket servers. They verify OAuth parameters, access-token claim extraction, profile isolation, Pi-owned header precedence, payload normalization, zstd round-trip behavior, WebSocket header differences, and rejection of non-JWT credentials.
 
 To verify the build after changes:
 

@@ -377,7 +377,7 @@ func TestCustomMagicHeaders_Codex(t *testing.T) {
 		Provider: "codex",
 		Attributes: map[string]string{
 			"base_url":                        server.URL,
-			"api_key":                         "codex-key",
+			"api_key":                         piCodexTestAccessToken(),
 			"header:X-Claude-Code-Session-Id": "$ABC",
 			"header:X-Missing":                "$NONEXISTENT",
 		},

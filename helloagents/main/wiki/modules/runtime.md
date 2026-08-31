@@ -9,9 +9,9 @@
 - **最后更新:** 2026-08-30
 
 ## Codex Pi 上游 Profile
-- OAuth + 默认 `https://chatgpt.com/backend-api/codex/responses` 默认启用严格 Pi profile；API key、自定义 Base URL、compact、images 与 realtime 保持 legacy。
+- 所有 Codex 请求只使用严格 Pi profile；默认目标为 `https://chatgpt.com/backend-api/codex/responses`，自定义 Base URL 仅改变目标而不再选择另一套 profile。compact 与 direct images 的 legacy 出站路径已移除，无包含 ChatGPT account claim 的有效 access-token JWT 时请求在出站前失败。
 - Pi profile 在 translator/thinking 后统一请求体，并最终覆盖 Pi-owned Header；SSE 使用 zstd level 3，WebSocket 使用 Pi Beta、同值 request/session ID、5 分钟 idle 和 55 分钟 max age。
-- `codex.disable-pi-upstream-parity=true` 可将符合条件的请求回滚到 legacy profile。
+- Pi WebSocket 会话按 execution session + access-token account ID 隔离，支持增量 continuation；建连前失败回退 SSE 后，该 session 保持 SSE 模式。
 
 ## 依赖
 - `internal/auth`

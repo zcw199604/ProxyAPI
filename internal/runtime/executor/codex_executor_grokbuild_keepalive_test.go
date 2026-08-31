@@ -32,7 +32,7 @@ func TestCodexExecutorExecuteStream_GrokBuildConvertsKeepaliveToSSEComment(t *te
 	executor := NewCodexExecutor(&config.Config{})
 	auth := &cliproxyauth.Auth{Attributes: map[string]string{
 		"base_url": server.URL,
-		"api_key":  "test",
+		"api_key":  piCodexTestAccessToken(),
 	}}
 
 	tests := []struct {
@@ -117,7 +117,7 @@ func TestCodexExecutorExecuteStream_GrokBuildWithBuffering(t *testing.T) {
 	executor := NewCodexExecutor(cfg)
 	auth := &cliproxyauth.Auth{Attributes: map[string]string{
 		"base_url": server.URL,
-		"api_key":  "test",
+		"api_key":  piCodexTestAccessToken(),
 	}}
 
 	res, err := executor.ExecuteStream(context.Background(), auth, cliproxyexecutor.Request{
@@ -175,7 +175,7 @@ func TestCodexExecutorExecuteStream_GrokBuildDetectedFromGinContext(t *testing.T
 	executor := NewCodexExecutor(&config.Config{})
 	auth := &cliproxyauth.Auth{Attributes: map[string]string{
 		"base_url": server.URL,
-		"api_key":  "test",
+		"api_key":  piCodexTestAccessToken(),
 	}}
 
 	gin.SetMode(gin.TestMode)
@@ -239,7 +239,7 @@ func TestCodexExecutorExecuteStream_NonGrokClientKeepsVerbatim(t *testing.T) {
 	executor := NewCodexExecutor(&config.Config{})
 	auth := &cliproxyauth.Auth{Attributes: map[string]string{
 		"base_url": server.URL,
-		"api_key":  "test",
+		"api_key":  piCodexTestAccessToken(),
 	}}
 
 	res, err := executor.ExecuteStream(context.Background(), auth, cliproxyexecutor.Request{

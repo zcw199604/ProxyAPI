@@ -55,16 +55,19 @@ func (e *CodexExecutor) PrepareRequest(req *http.Request, auth *cliproxyauth.Aut
 		return nil
 	}
 	apiKey, _ := codexCreds(auth)
-	if strings.TrimSpace(apiKey) != "" {
-		req.Header.Set("Authorization", "Bearer "+apiKey)
-	} else {
+	if strings.TrimSpace(apiKey) == "" {
 		req.Header.Del("Authorization")
+		return fmt.Errorf("Pi Codex access token is missing")
 	}
 	var attrs map[string]string
 	if auth != nil {
 		attrs = auth.Attributes
 	}
 	util.ApplyCustomHeadersFromAttrs(req, attrs)
+	if err := applyPiCodexBaseHeaders(req.Header, apiKey, ""); err != nil {
+		return err
+	}
+	req.Header.Set("OpenAI-Beta", "responses=experimental")
 	return nil
 }
 

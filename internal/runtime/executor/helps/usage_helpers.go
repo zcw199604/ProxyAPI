@@ -188,7 +188,11 @@ func (r *UsageReporter) MarkFirstResponseByte() {
 	if start.IsZero() {
 		return
 	}
-	r.setTTFT(time.Since(start))
+	elapsed := time.Since(start)
+	if elapsed <= 0 {
+		elapsed = time.Nanosecond
+	}
+	r.setTTFT(elapsed)
 }
 
 func (r *UsageReporter) buildAdditionalModelRecord(model string, detail usage.Detail) (usage.Record, bool) {

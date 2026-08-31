@@ -19,8 +19,12 @@ import (
 
 const piCodexReferenceCommit = "853a80d26c90a14c1886f0ebb8ffaae133ca2185"
 
+func piCodexTestAccessToken() string {
+	return "eyJhbGciOiJub25lIn0." + base64.RawURLEncoding.EncodeToString([]byte(`{"https://api.openai.com/auth":{"chatgpt_account_id":"acct-pi"}}`)) + ".signature"
+}
+
 func piOAuthTestAuth() *cliproxyauth.Auth {
-	accessToken := "eyJhbGciOiJub25lIn0." + base64.RawURLEncoding.EncodeToString([]byte(`{"https://api.openai.com/auth":{"chatgpt_account_id":"acct-pi"}}`)) + ".signature"
+	accessToken := piCodexTestAccessToken()
 	return &cliproxyauth.Auth{
 		Provider:   "codex",
 		Attributes: map[string]string{cliproxyauth.AttributeAuthKind: cliproxyauth.AuthKindOAuth},
@@ -30,24 +34,64 @@ func piOAuthTestAuth() *cliproxyauth.Auth {
 
 func TestPiCodexUpstreamSelection(t *testing.T) {
 	auth := piOAuthTestAuth()
-	if !isPiCodexUpstream(nil, auth, "", "") {
-		t.Fatalf("default OAuth path must use Pi contract %s", piCodexReferenceCommit)
+	executor := NewCodexAutoExecutor(&config.Config{})
+	for _, tc := range []struct {
+		name string
+		cfg  *config.Config
+		auth *cliproxyauth.Auth
+		base string
+		alt  string
+	}{
+		{name: "default oauth", cfg: nil, auth: auth, base: "", alt: ""},
+		{name: "custom endpoint still pi", cfg: &config.Config{}, auth: auth, base: "https://codex.example.invalid", alt: ""},
+		{name: "compact still pi profile", cfg: &config.Config{}, auth: auth, base: "", alt: "responses/compact"},
+		{name: "api key cannot select legacy profile", cfg: &config.Config{}, auth: &cliproxyauth.Auth{Provider: "codex", Attributes: map[string]string{"api_key": piCodexTestAccessToken()}}, base: "https://legacy.invalid", alt: ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if !executor.piWebsocketPreferred(tc.auth, cliproxyexecutor.Options{Alt: tc.alt}) {
+				t.Fatal("all Codex requests must use the Pi profile")
+			}
+		})
 	}
-	if !isPiCodexUpstream(&config.Config{}, auth, "https://chatgpt.com/backend-api/codex/", "") {
-		t.Fatal("canonical default base URL must use Pi contract")
+}
+
+func TestPiCodexCredentialsPreferOAuthTokenWithoutChangingTargetOverride(t *testing.T) {
+	auth := piOAuthTestAuth()
+	auth.Attributes["api_key"] = "legacy-api-key"
+	auth.Attributes["base_url"] = "https://legacy.invalid"
+	token, baseURL := codexCreds(auth)
+	if token != auth.Metadata["access_token"] {
+		t.Fatal("Codex must use the Pi OAuth access token")
 	}
-	if isPiCodexUpstream(&config.Config{Codex: config.CodexConfig{DisablePiUpstreamParity: true}}, auth, "", "") {
-		t.Fatal("disabled parity must use legacy path")
+	if baseURL != "https://legacy.invalid" {
+		t.Fatalf("target override = %q", baseURL)
 	}
-	apiKeyAuth := &cliproxyauth.Auth{Provider: "codex", Attributes: map[string]string{cliproxyauth.AttributeAuthKind: cliproxyauth.AuthKindAPIKey, "api_key": "fake"}}
-	if isPiCodexUpstream(nil, apiKeyAuth, "", "") {
-		t.Fatal("API key path must remain legacy")
+}
+
+func TestPiCodexWebSocketContinuationUsesIncrementalInput(t *testing.T) {
+	session := &codexWebsocketSession{}
+	first := []byte(`{"model":"gpt-5.4","input":[{"type":"message","role":"user","content":"one"}]}`)
+	completed := []byte(`{"type":"response.completed","response":{"id":"resp-1","output":[{"type":"message","role":"assistant","content":"answer"}]}}`)
+	session.storePiContinuation(first, completed)
+	second := []byte(`{"model":"gpt-5.4","input":[{"type":"message","role":"user","content":"one"},{"type":"message","role":"assistant","content":"answer"},{"type":"message","role":"user","content":"two"}]}`)
+	got := session.buildPiContinuationBody(second)
+	assertJSONValue(t, got, "previous_response_id", "resp-1")
+	if count := len(gjson.GetBytes(got, "input").Array()); count != 1 {
+		t.Fatalf("incremental input count = %d, want 1; body=%s", count, got)
 	}
-	if isPiCodexUpstream(nil, auth, "https://codex.example.invalid", "") {
-		t.Fatal("custom base URL must remain legacy")
+	assertJSONValue(t, got, "input.0.content", "two")
+}
+
+func TestPiCodexWebSocketFailurePinsSessionToSSE(t *testing.T) {
+	store := &codexWebsocketSessionStore{sessions: make(map[string]*codexWebsocketSession)}
+	exec := NewCodexWebsocketsExecutor(&config.Config{})
+	exec.store = store
+	if exec.piSSEFallbackActive("session-1") {
+		t.Fatal("new session unexpectedly pinned to SSE")
 	}
-	if isPiCodexUpstream(nil, auth, "", "responses/compact") {
-		t.Fatal("compact path must remain legacy")
+	exec.activatePiSSEFallback("session-1")
+	if !exec.piSSEFallbackActive("session-1") {
+		t.Fatal("failed Pi websocket session must remain pinned to SSE")
 	}
 }
 
@@ -66,17 +110,21 @@ func TestNormalizePiCodexPayload(t *testing.T) {
 	if !gjson.GetBytes(got, "stream").Bool() || !gjson.GetBytes(got, "parallel_tool_calls").Bool() {
 		t.Fatal("stream and parallel_tool_calls must be true")
 	}
-	for _, path := range []string{"previous_response_id", "generate", "prompt_cache_retention", "safety_identifier", "stream_options"} {
+	for _, path := range []string{"generate", "prompt_cache_retention", "safety_identifier", "stream_options"} {
 		if gjson.GetBytes(got, path).Exists() {
 			t.Errorf("%s must be absent", path)
 		}
 	}
+	assertJSONValue(t, got, "previous_response_id", "prev")
 	if !gjson.GetBytes(got, "input.0").Exists() || !gjson.GetBytes(got, "tools.0").Exists() || !gjson.GetBytes(got, "reasoning").Exists() {
 		t.Fatal("translated input/tools/reasoning must be preserved")
 	}
 	withoutSession := normalizePiCodexPayload([]byte(`{"prompt_cache_key":"proxy-generated"}`), "gpt-5.4", "")
 	if gjson.GetBytes(withoutSession, "prompt_cache_key").Exists() {
 		t.Fatal("prompt_cache_key must be absent without a Pi session")
+	}
+	if !gjson.GetBytes(withoutSession, "input").IsArray() {
+		t.Fatal("Pi payload input must always be an array")
 	}
 }
 
@@ -192,8 +240,8 @@ func TestPiCodexAutoPrefersWebSocket(t *testing.T) {
 	if !executor.piWebsocketPreferred(piOAuthTestAuth(), cliproxyexecutor.Options{}) {
 		t.Fatal("strict Pi OAuth path must prefer websocket transport")
 	}
-	if executor.piWebsocketPreferred(piOAuthTestAuth(), cliproxyexecutor.Options{Alt: "responses/compact"}) {
-		t.Fatal("compact path must not use Pi websocket transport")
+	if !executor.piWebsocketPreferred(piOAuthTestAuth(), cliproxyexecutor.Options{Alt: "responses/compact"}) {
+		t.Fatal("all Codex operations must use Pi websocket transport")
 	}
 }
 

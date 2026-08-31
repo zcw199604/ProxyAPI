@@ -30,7 +30,7 @@ func TestCodexExecutorExecute_NonEmptyCompletionOutputHydratesMissingItemID(t *t
 	executor := NewCodexExecutor(&config.Config{})
 	auth := &cliproxyauth.Auth{Attributes: map[string]string{
 		"base_url": server.URL,
-		"api_key":  "test",
+		"api_key":  piCodexTestAccessToken(),
 	}}
 
 	resp, err := executor.Execute(context.Background(), auth, cliproxyexecutor.Request{
@@ -66,7 +66,7 @@ func TestCodexExecutorExecute_EmptyStreamCompletionOutputUsesOutputItemDone(t *t
 	executor := NewCodexExecutor(&config.Config{})
 	auth := &cliproxyauth.Auth{Attributes: map[string]string{
 		"base_url": server.URL,
-		"api_key":  "test",
+		"api_key":  piCodexTestAccessToken(),
 	}}
 
 	resp, err := executor.Execute(context.Background(), auth, cliproxyexecutor.Request{
@@ -101,7 +101,7 @@ func TestCodexExecutorExecuteSurfacesTerminalStreamError(t *testing.T) {
 	executor := NewCodexExecutor(&config.Config{})
 	auth := &cliproxyauth.Auth{Attributes: map[string]string{
 		"base_url": server.URL,
-		"api_key":  "test",
+		"api_key":  piCodexTestAccessToken(),
 	}}
 
 	_, err := executor.Execute(context.Background(), auth, cliproxyexecutor.Request{
@@ -133,7 +133,7 @@ func TestCodexExecutorExecuteIncompleteResponseIsSuccessful(t *testing.T) {
 	executor := NewCodexExecutor(&config.Config{})
 	auth := &cliproxyauth.Auth{Attributes: map[string]string{
 		"base_url": server.URL,
-		"api_key":  "test",
+		"api_key":  piCodexTestAccessToken(),
 	}}
 
 	resp, err := executor.Execute(context.Background(), auth, cliproxyexecutor.Request{
@@ -161,7 +161,7 @@ func TestCodexExecutorExecuteExplicitTerminalFailureIsNotRequestScoped(t *testin
 	executor := NewCodexExecutor(&config.Config{})
 	auth := &cliproxyauth.Auth{Attributes: map[string]string{
 		"base_url": server.URL,
-		"api_key":  "test",
+		"api_key":  piCodexTestAccessToken(),
 	}}
 
 	_, err := executor.Execute(context.Background(), auth, cliproxyexecutor.Request{
@@ -190,7 +190,7 @@ func TestCodexExecutorExecuteMissingCompletionIsRequestScoped(t *testing.T) {
 	executor := NewCodexExecutor(&config.Config{})
 	auth := &cliproxyauth.Auth{Attributes: map[string]string{
 		"base_url": server.URL,
-		"api_key":  "test",
+		"api_key":  piCodexTestAccessToken(),
 	}}
 
 	_, err := executor.Execute(context.Background(), auth, cliproxyexecutor.Request{
@@ -219,7 +219,7 @@ func TestCodexExecutorExecuteStreamMissingCompletionIsRequestScoped(t *testing.T
 	executor := NewCodexExecutor(&config.Config{})
 	auth := &cliproxyauth.Auth{Attributes: map[string]string{
 		"base_url": server.URL,
-		"api_key":  "test",
+		"api_key":  piCodexTestAccessToken(),
 	}}
 
 	result, err := executor.ExecuteStream(context.Background(), auth, cliproxyexecutor.Request{
@@ -259,7 +259,7 @@ func TestCodexExecutorExecuteStreamExplicitTerminalFailureIsNotSuccessful(t *tes
 	executor := NewCodexExecutor(&config.Config{})
 	auth := &cliproxyauth.Auth{Attributes: map[string]string{
 		"base_url": server.URL,
-		"api_key":  "test",
+		"api_key":  piCodexTestAccessToken(),
 	}}
 
 	result, err := executor.ExecuteStream(context.Background(), auth, cliproxyexecutor.Request{
@@ -288,7 +288,7 @@ func TestCodexExecutorExecuteStreamExplicitTerminalFailureIsNotSuccessful(t *tes
 	assertNotRequestScopedTestError(t, streamErr)
 }
 
-func TestCodexAutoExecutorHTTPFallbackForwardsSequentialCutoffReasoningSummaryDelivery(t *testing.T) {
+func TestCodexAutoExecutorHTTPFallbackUsesPiReasoningSummaryStream(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, errRead := io.ReadAll(r.Body)
 		if errRead != nil {
@@ -312,7 +312,7 @@ func TestCodexAutoExecutorHTTPFallbackForwardsSequentialCutoffReasoningSummaryDe
 	executor := NewCodexAutoExecutor(&config.Config{})
 	auth := &cliproxyauth.Auth{Attributes: map[string]string{
 		"base_url": server.URL,
-		"api_key":  "test",
+		"api_key":  piCodexTestAccessToken(),
 	}}
 	result, err := executor.ExecuteStream(cliproxyexecutor.WithDownstreamWebsocket(context.Background()), auth, cliproxyexecutor.Request{
 		Model:   "gpt-5.6-sol",
@@ -333,8 +333,8 @@ func TestCodexAutoExecutorHTTPFallbackForwardsSequentialCutoffReasoningSummaryDe
 		}
 		output.Write(chunk.Payload)
 	}
-	if !strings.Contains(output.String(), `"type":"response.reasoning_summary_text.done"`) {
-		t.Fatalf("missing sequential-cutoff summary event; output=%s", output.String())
+	if !strings.Contains(output.String(), `"type":"response.reasoning_summary_text.delta"`) {
+		t.Fatalf("missing Pi reasoning summary delta event; output=%s", output.String())
 	}
 }
 
@@ -362,7 +362,7 @@ func TestCodexExecutorTransportFailureBeforeTerminalIsRequestScoped(t *testing.T
 			executor := NewCodexExecutor(&config.Config{})
 			auth := &cliproxyauth.Auth{Attributes: map[string]string{
 				"base_url": "http://codex.test",
-				"api_key":  "test",
+				"api_key":  piCodexTestAccessToken(),
 			}}
 			req := cliproxyexecutor.Request{Model: "gpt-5.5", Payload: []byte(`{"model":"gpt-5.5","input":"hello"}`)}
 			opts := cliproxyexecutor.Options{SourceFormat: sdktranslator.FromString("openai-response"), Stream: tc.stream}
@@ -406,7 +406,7 @@ func TestCodexExecutorExecuteIgnoresTransportErrorAfterCompletion(t *testing.T) 
 	executor := NewCodexExecutor(&config.Config{})
 	auth := &cliproxyauth.Auth{Attributes: map[string]string{
 		"base_url": "http://codex.test",
-		"api_key":  "test",
+		"api_key":  piCodexTestAccessToken(),
 	}}
 
 	resp, err := executor.Execute(ctx, auth, cliproxyexecutor.Request{
@@ -438,7 +438,7 @@ func TestCodexExecutorExecuteStreamIgnoresTransportErrorAfterCompletion(t *testi
 	executor := NewCodexExecutor(&config.Config{})
 	auth := &cliproxyauth.Auth{Attributes: map[string]string{
 		"base_url": "http://codex.test",
-		"api_key":  "test",
+		"api_key":  piCodexTestAccessToken(),
 	}}
 
 	result, err := executor.ExecuteStream(ctx, auth, cliproxyexecutor.Request{
@@ -476,7 +476,7 @@ func TestCodexExecutorExecuteStreamSurfacesTerminalStreamError(t *testing.T) {
 	executor := NewCodexExecutor(&config.Config{})
 	auth := &cliproxyauth.Auth{Attributes: map[string]string{
 		"base_url": server.URL,
-		"api_key":  "test",
+		"api_key":  piCodexTestAccessToken(),
 	}}
 
 	result, err := executor.ExecuteStream(context.Background(), auth, cliproxyexecutor.Request{
@@ -676,7 +676,7 @@ func TestCodexExecutorExecuteStream_EmptyStreamCompletionOutputUsesOutputItemDon
 	executor := NewCodexExecutor(&config.Config{})
 	auth := &cliproxyauth.Auth{Attributes: map[string]string{
 		"base_url": server.URL,
-		"api_key":  "test",
+		"api_key":  piCodexTestAccessToken(),
 	}}
 
 	result, err := executor.ExecuteStream(context.Background(), auth, cliproxyexecutor.Request{

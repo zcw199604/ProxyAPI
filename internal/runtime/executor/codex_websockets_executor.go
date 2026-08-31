@@ -16,10 +16,9 @@ import (
 	cliproxyexecutor "github.com/router-for-me/CLIProxyAPI/v7/sdk/cliproxy/executor"
 )
 
-// CodexWebsocketsExecutor executes Codex Responses requests using a WebSocket transport.
-//
-// It preserves the existing CodexExecutor HTTP implementation as a fallback for endpoints
-// not available over WebSocket (e.g. /responses/compact) and for websocket upgrade failures.
+// CodexWebsocketsExecutor executes Pi-compatible Codex Responses requests using WebSocket
+// transport. The HTTP executor is used only as Pi's SSE fallback when a websocket attempt
+// cannot start.
 type CodexWebsocketsExecutor struct {
 	*CodexExecutor
 
@@ -33,11 +32,8 @@ func NewCodexWebsocketsExecutor(cfg *config.Config) *CodexWebsocketsExecutor {
 	}
 }
 
-// CodexAutoExecutor routes Codex requests to the websocket transport only when:
-//  1. The downstream transport is websocket, and
-//  2. The selected auth enables websockets.
-//
-// For non-websocket downstream requests, it always uses the legacy HTTP implementation.
+// CodexAutoExecutor routes every authenticated Codex request through the Pi transport
+// contract, preferring WebSocket and pinning a session to Pi SSE after a pre-start failure.
 type CodexAutoExecutor struct {
 	httpExec *CodexExecutor
 	wsExec   *CodexWebsocketsExecutor
@@ -71,6 +67,13 @@ func (e codexWebsocketPreStartError) Headers() http.Header {
 	return nil
 }
 
+func (e codexWebsocketPreStartError) IsRequestScoped() bool {
+	if provider, ok := e.err.(interface{ IsRequestScoped() bool }); ok {
+		return provider.IsRequestScoped()
+	}
+	return false
+}
+
 func isCodexWebsocketPreStartError(err error) bool {
 	var target codexWebsocketPreStartError
 	return errors.As(err, &target)
@@ -85,11 +88,8 @@ func isPiCodexWebsocketRetryError(err error) bool {
 }
 
 func (e *CodexAutoExecutor) piWebsocketPreferred(auth *cliproxyauth.Auth, opts cliproxyexecutor.Options) bool {
-	if e == nil || e.httpExec == nil {
-		return false
-	}
-	_, baseURL := codexCreds(auth)
-	return isPiCodexUpstream(e.httpExec.cfg, auth, baseURL, opts.Alt)
+	_ = opts
+	return e != nil && e.httpExec != nil && auth != nil
 }
 
 func NewCodexAutoExecutor(cfg *config.Config) *CodexAutoExecutor {
@@ -120,6 +120,10 @@ func (e *CodexAutoExecutor) Execute(ctx context.Context, auth *cliproxyauth.Auth
 		return cliproxyexecutor.Response{}, fmt.Errorf("codex auto executor: executor is nil")
 	}
 	piPreferred := e.piWebsocketPreferred(auth, opts)
+	executionSessionID := executionSessionIDFromOptions(opts)
+	if piPreferred && e.wsExec.piSSEFallbackActive(executionSessionID) {
+		return e.httpExec.Execute(ctx, auth, req, opts)
+	}
 	if piPreferred || (cliproxyexecutor.DownstreamWebsocket(ctx) && codexWebsocketsEnabled(auth)) {
 		response, err := e.wsExec.Execute(ctx, auth, req, opts)
 		if piPreferred && isPiCodexWebsocketRetryError(err) {
@@ -128,6 +132,7 @@ func (e *CodexAutoExecutor) Execute(ctx context.Context, auth *cliproxyauth.Auth
 		if err == nil || !piPreferred || cliproxyexecutor.RequiredUpstreamWebsocket(ctx) || !isCodexWebsocketPreStartError(err) {
 			return response, err
 		}
+		e.wsExec.activatePiSSEFallback(executionSessionID)
 		return e.httpExec.Execute(ctx, auth, req, opts)
 	}
 	if cliproxyexecutor.RequiredUpstreamWebsocket(ctx) {
@@ -141,6 +146,10 @@ func (e *CodexAutoExecutor) ExecuteStream(ctx context.Context, auth *cliproxyaut
 		return nil, fmt.Errorf("codex auto executor: executor is nil")
 	}
 	piPreferred := e.piWebsocketPreferred(auth, opts)
+	executionSessionID := executionSessionIDFromOptions(opts)
+	if piPreferred && e.wsExec.piSSEFallbackActive(executionSessionID) {
+		return e.httpExec.ExecuteStream(ctx, auth, req, opts)
+	}
 	if piPreferred || (cliproxyexecutor.DownstreamWebsocket(ctx) && codexWebsocketsEnabled(auth)) {
 		result, err := e.wsExec.ExecuteStream(ctx, auth, req, opts)
 		if piPreferred && isPiCodexWebsocketRetryError(err) {
@@ -149,6 +158,7 @@ func (e *CodexAutoExecutor) ExecuteStream(ctx context.Context, auth *cliproxyaut
 		if err == nil || !piPreferred || cliproxyexecutor.RequiredUpstreamWebsocket(ctx) || !isCodexWebsocketPreStartError(err) {
 			return result, err
 		}
+		e.wsExec.activatePiSSEFallback(executionSessionID)
 		return e.httpExec.ExecuteStream(ctx, auth, req, opts)
 	}
 	if cliproxyexecutor.RequiredUpstreamWebsocket(ctx) {

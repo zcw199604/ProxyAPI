@@ -4,14 +4,15 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"net"
 	"net/http"
+	neturl "net/url"
 	"strings"
 	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"github.com/klauspost/compress/zstd"
 	codexauth "github.com/router-for-me/CLIProxyAPI/v7/internal/auth/codex"
-	"github.com/router-for-me/CLIProxyAPI/v7/internal/config"
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/runtime/executor/helps"
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/util"
 	cliproxyauth "github.com/router-for-me/CLIProxyAPI/v7/sdk/cliproxy/auth"
@@ -21,27 +22,8 @@ import (
 )
 
 const (
-	piCodexBaseURL             = "https://chatgpt.com/backend-api/codex"
 	piCodexDefaultInstructions = "You are a helpful assistant."
 )
-
-func isPiCodexUpstream(cfg *config.Config, auth *cliproxyauth.Auth, baseURL string, alt string) bool {
-	if cfg != nil && cfg.Codex.DisablePiUpstreamParity {
-		return false
-	}
-	if auth == nil || !strings.EqualFold(strings.TrimSpace(auth.Provider), "codex") || auth.AuthKind() != cliproxyauth.AuthKindOAuth {
-		return false
-	}
-	if strings.TrimSpace(alt) != "" {
-		return false
-	}
-	token, _ := codexCreds(auth)
-	if strings.TrimSpace(token) == "" {
-		return false
-	}
-	normalized := strings.TrimRight(strings.TrimSpace(baseURL), "/")
-	return normalized == "" || strings.EqualFold(normalized, piCodexBaseURL)
-}
 
 func normalizePiCodexPayload(body []byte, model string, sessionID string) []byte {
 	if len(body) == 0 || !gjson.ValidBytes(body) {
@@ -53,6 +35,13 @@ func normalizePiCodexPayload(body []byte, model string, sessionID string) []byte
 	if strings.TrimSpace(gjson.GetBytes(body, "instructions").String()) == "" {
 		body = helps.SetStringIfDifferent(body, "instructions", piCodexDefaultInstructions)
 	}
+	if !gjson.GetBytes(body, "input").IsArray() {
+		body, _ = sjson.SetRawBytes(body, "input", []byte(`[]`))
+	}
+	// Pi forwards Responses input items with the same 64-rune identifier
+	// constraint as the Codex backend. Keep this normalization in the shared
+	// Pi payload path so HTTP and WebSocket transports behave identically.
+	body = helps.SanitizeCodexInputItemIDs(body)
 	if strings.TrimSpace(gjson.GetBytes(body, "text.verbosity").String()) == "" {
 		body, _ = sjson.SetBytes(body, "text.verbosity", "low")
 	}
@@ -61,7 +50,7 @@ func normalizePiCodexPayload(body []byte, model string, sessionID string) []byte
 		body = helps.SetStringIfDifferent(body, "tool_choice", "auto")
 	}
 	body = helps.SetBoolIfDifferent(body, "parallel_tool_calls", true)
-	for _, field := range []string{"previous_response_id", "generate", "prompt_cache_retention", "safety_identifier", "stream_options"} {
+	for _, field := range []string{"generate", "prompt_cache_retention", "safety_identifier", "stream_options"} {
 		body, _ = sjson.DeleteBytes(body, field)
 	}
 	if sessionID = clampPiCodexSessionID(sessionID); sessionID != "" {
@@ -128,7 +117,7 @@ func newPiCodexSSERequest(ctx context.Context, url string, auth *cliproxyauth.Au
 	body = normalizePiCodexPayload(body, model, sessionID)
 	upstreamBody := body
 	contentEncoding := ""
-	if compressed, errCompress := compressPiCodexBody(body); errCompress == nil {
+	if compressed, errCompress := compressPiCodexBody(body); errCompress == nil && !isLoopbackCodexTarget(url) {
 		upstreamBody = compressed
 		contentEncoding = "zstd"
 	}
@@ -154,6 +143,15 @@ func newPiCodexSSERequest(ctx context.Context, url string, auth *cliproxyauth.Au
 		httpReq.Header.Del("Content-Encoding")
 	}
 	return httpReq, upstreamBody, nil
+}
+
+func isLoopbackCodexTarget(rawURL string) bool {
+	parsed, errParse := neturl.Parse(rawURL)
+	if errParse != nil {
+		return false
+	}
+	host := parsed.Hostname()
+	return strings.EqualFold(host, "localhost") || net.ParseIP(host).IsLoopback()
 }
 
 func piCodexAccountID(accessToken string) (string, error) {

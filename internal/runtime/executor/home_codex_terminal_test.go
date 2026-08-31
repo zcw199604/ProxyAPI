@@ -38,17 +38,35 @@ func TestHomeCodexTerminalStreamFailureUsesFreshDispatchOnNextRequest(t *testing
 			return
 		}
 		defer func() { _ = conn.Close() }()
-		if _, _, errRead := conn.ReadMessage(); errRead != nil {
-			return
-		}
-		if connections.Add(1) == 1 {
-			_ = conn.WriteJSON(map[string]any{"type": "response.created", "response": map[string]any{"id": "response-1"}})
-			_ = conn.WriteJSON(map[string]any{"type": "error", "status": http.StatusBadGateway, "error": map[string]any{"message": "terminal failure"}})
-		} else {
-			_ = conn.WriteJSON(map[string]any{"type": "response.completed", "response": map[string]any{"id": "response-2", "output": []any{}}})
-		}
+		connection := connections.Add(1)
 		for {
 			if _, _, errRead := conn.ReadMessage(); errRead != nil {
+				return
+			}
+			if connection == 1 {
+				if errWrite := conn.WriteJSON(map[string]any{"type": "response.created", "response": map[string]any{"id": "response-1"}}); errWrite != nil {
+					t.Errorf("write first response.created: %v", errWrite)
+					return
+				}
+				if errWrite := conn.WriteJSON(map[string]any{"type": "error", "status": http.StatusBadGateway, "error": map[string]any{"message": "terminal failure"}}); errWrite != nil {
+					t.Errorf("write first terminal error: %v", errWrite)
+					return
+				}
+				for {
+					if _, _, errRead := conn.ReadMessage(); errRead != nil {
+						return
+					}
+				}
+			}
+			if errWrite := conn.WriteJSON(map[string]any{"type": "response.created", "response": map[string]any{"id": "response-2"}}); errWrite != nil {
+				t.Errorf("write second response.created: %v", errWrite)
+				return
+			}
+			if errWrite := conn.WriteJSON(map[string]any{"type": "response.completed", "response": map[string]any{
+				"id": "response-2", "status": "completed", "output": []any{},
+				"usage": map[string]any{"input_tokens": 0, "output_tokens": 0, "total_tokens": 0},
+			}}); errWrite != nil {
+				t.Errorf("write second response.completed: %v", errWrite)
 				return
 			}
 		}
@@ -60,7 +78,7 @@ func TestHomeCodexTerminalStreamFailureUsesFreshDispatchOnNextRequest(t *testing
 		Provider: "codex",
 		Status:   cliproxyauth.StatusActive,
 		Attributes: map[string]string{
-			"api_key":  "test-key",
+			"api_key":  piCodexTestAccessToken(),
 			"base_url": server.URL,
 		},
 	}}

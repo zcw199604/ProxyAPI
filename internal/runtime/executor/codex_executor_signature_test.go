@@ -27,7 +27,7 @@ func validCodexReasoningEncryptedContentForTest() string {
 func newCodexSignatureTestAuth(serverURL string) *cliproxyauth.Auth {
 	return &cliproxyauth.Auth{Attributes: map[string]string{
 		"base_url": serverURL,
-		"api_key":  "test",
+		"api_key":  piCodexTestAccessToken(),
 	}}
 }
 
@@ -110,35 +110,5 @@ func TestCodexExecutorExecuteStreamDropsInvalidReasoningEncryptedContentFromFina
 	}
 	if gjson.GetBytes(gotBody, "input.0.encrypted_content").Exists() {
 		t.Fatalf("invalid stream reasoning encrypted_content exists, want removed; body=%s", string(gotBody))
-	}
-}
-
-func TestCodexExecutorCompactDropsInvalidReasoningEncryptedContentFromFinalRequest(t *testing.T) {
-	var gotBody []byte
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		body, errRead := io.ReadAll(r.Body)
-		if errRead != nil {
-			t.Fatalf("read body: %v", errRead)
-		}
-		gotBody = body
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"id":"resp_1","object":"response.compaction","usage":{"input_tokens":1,"output_tokens":2,"total_tokens":3}}`))
-	}))
-	defer server.Close()
-
-	executor := NewCodexExecutor(&config.Config{})
-	_, err := executor.Execute(context.Background(), newCodexSignatureTestAuth(server.URL), cliproxyexecutor.Request{
-		Model:   "gpt-5.4",
-		Payload: []byte(`{"model":"gpt-5.4","input":[{"id":"rs_bad","type":"reasoning","encrypted_content":"bad","summary":[]}]}`),
-	}, cliproxyexecutor.Options{
-		SourceFormat: sdktranslator.FromString("openai-response"),
-		Alt:          "responses/compact",
-		Stream:       false,
-	})
-	if err != nil {
-		t.Fatalf("Execute compact error: %v", err)
-	}
-	if gjson.GetBytes(gotBody, "input.0.encrypted_content").Exists() {
-		t.Fatalf("invalid compact reasoning encrypted_content exists, want removed; body=%s", string(gotBody))
 	}
 }

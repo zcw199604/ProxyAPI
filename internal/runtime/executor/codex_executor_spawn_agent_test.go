@@ -51,7 +51,7 @@ func TestCodexExecutorOptimizeMultiAgentV2(t *testing.T) {
 	payload := codexSpawnAgentTestPayload()
 	auth := &cliproxyauth.Auth{Attributes: map[string]string{
 		"base_url": server.URL,
-		"api_key":  "test",
+		"api_key":  piCodexTestAccessToken(),
 	}}
 
 	tests := []struct {
@@ -132,7 +132,7 @@ func TestCodexExecutorIsCompatConvertsAgentMessage(t *testing.T) {
 		Provider: "codex",
 		Attributes: map[string]string{
 			"base_url": server.URL,
-			"api_key":  "test",
+			"api_key":  piCodexTestAccessToken(),
 		},
 	}
 
@@ -145,12 +145,11 @@ func TestCodexExecutorIsCompatConvertsAgentMessage(t *testing.T) {
 		wantRoleExists bool
 	}{
 		{
-			name:           "is-compat converts agent_message",
+			name:           "Pi profile ignores legacy is-compat conversion",
 			model:          "deepseek-v4-flash",
 			enabled:        true,
-			wantType:       "message",
-			wantRole:       "user",
-			wantRoleExists: true,
+			wantType:       "agent_message",
+			wantRoleExists: false,
 		},
 		{
 			name:           "native model keeps agent_message",

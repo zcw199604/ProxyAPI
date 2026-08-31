@@ -77,6 +77,38 @@ type codexWebsocketSession struct {
 	upstreamDisconnectErrMu   sync.RWMutex
 	upstreamDisconnectErrConn *websocket.Conn
 	upstreamDisconnectErr     error
+
+	piStateMu      sync.Mutex
+	piSSEFallback  bool
+	piContinuation *piCodexWebsocketContinuation
+}
+
+func (s *codexWebsocketSession) piFallbackActive() bool {
+	if s == nil {
+		return false
+	}
+	s.piStateMu.Lock()
+	defer s.piStateMu.Unlock()
+	return s.piSSEFallback
+}
+
+func (s *codexWebsocketSession) activatePiSSEFallback() {
+	if s == nil {
+		return
+	}
+	s.piStateMu.Lock()
+	s.piSSEFallback = true
+	s.piContinuation = nil
+	s.piStateMu.Unlock()
+}
+
+func (s *codexWebsocketSession) clearPiContinuation() {
+	if s == nil {
+		return
+	}
+	s.piStateMu.Lock()
+	s.piContinuation = nil
+	s.piStateMu.Unlock()
 }
 
 type codexWebsocketRead struct {
@@ -476,6 +508,27 @@ func (e *CodexWebsocketsExecutor) getOrCreateSession(sessionID string) *codexWeb
 	}
 	store.sessions[sessionID] = sess
 	return sess
+}
+
+func (e *CodexWebsocketsExecutor) piSSEFallbackActive(sessionID string) bool {
+	sessionID = strings.TrimSpace(sessionID)
+	if e == nil || sessionID == "" {
+		return false
+	}
+	store := e.store
+	if store == nil {
+		store = globalCodexWebsocketSessionStore
+	}
+	store.mu.Lock()
+	sess := store.sessions[sessionID]
+	store.mu.Unlock()
+	return sess.piFallbackActive()
+}
+
+func (e *CodexWebsocketsExecutor) activatePiSSEFallback(sessionID string) {
+	if sessionID = strings.TrimSpace(sessionID); sessionID != "" {
+		e.getOrCreateSession(sessionID).activatePiSSEFallback()
+	}
 }
 
 func (e *CodexWebsocketsExecutor) UpstreamDisconnectChan(sessionID string) <-chan error {

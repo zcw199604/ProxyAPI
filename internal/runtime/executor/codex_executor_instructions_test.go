@@ -29,7 +29,7 @@ func TestCodexExecutorExecuteNormalizesNullInstructions(t *testing.T) {
 	executor := NewCodexExecutor(&config.Config{})
 	auth := &cliproxyauth.Auth{Attributes: map[string]string{
 		"base_url": server.URL,
-		"api_key":  "test",
+		"api_key":  piCodexTestAccessToken(),
 	}}
 
 	_, err := executor.Execute(context.Background(), auth, cliproxyexecutor.Request{
@@ -48,8 +48,8 @@ func TestCodexExecutorExecuteNormalizesNullInstructions(t *testing.T) {
 	if gjson.GetBytes(gotBody, "instructions").Type != gjson.String {
 		t.Fatalf("instructions type = %v, want string", gjson.GetBytes(gotBody, "instructions").Type)
 	}
-	if gjson.GetBytes(gotBody, "instructions").String() != "" {
-		t.Fatalf("instructions = %q, want empty string", gjson.GetBytes(gotBody, "instructions").String())
+	if got := gjson.GetBytes(gotBody, "instructions").String(); got != piCodexDefaultInstructions {
+		t.Fatalf("instructions = %q, want Pi default", got)
 	}
 }
 
@@ -68,7 +68,7 @@ func TestCodexExecutorExecuteStreamNormalizesNullInstructions(t *testing.T) {
 	executor := NewCodexExecutor(&config.Config{})
 	auth := &cliproxyauth.Auth{Attributes: map[string]string{
 		"base_url": server.URL,
-		"api_key":  "test",
+		"api_key":  piCodexTestAccessToken(),
 	}}
 
 	result, err := executor.ExecuteStream(context.Background(), auth, cliproxyexecutor.Request{
@@ -89,8 +89,8 @@ func TestCodexExecutorExecuteStreamNormalizesNullInstructions(t *testing.T) {
 	if gjson.GetBytes(gotBody, "instructions").Type != gjson.String {
 		t.Fatalf("instructions type = %v, want string", gjson.GetBytes(gotBody, "instructions").Type)
 	}
-	if gjson.GetBytes(gotBody, "instructions").String() != "" {
-		t.Fatalf("instructions = %q, want empty string", gjson.GetBytes(gotBody, "instructions").String())
+	if got := gjson.GetBytes(gotBody, "instructions").String(); got != piCodexDefaultInstructions {
+		t.Fatalf("instructions = %q, want Pi default", got)
 	}
 }
 

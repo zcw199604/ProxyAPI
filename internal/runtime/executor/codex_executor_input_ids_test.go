@@ -33,7 +33,7 @@ func TestCodexExecutorExecuteStreamSanitizesOverlongInputItemIDs(t *testing.T) {
 	defer server.Close()
 
 	executor := NewCodexExecutor(&config.Config{SDKConfig: config.SDKConfig{DisableImageGeneration: config.DisableImageGenerationAll}})
-	auth := &cliproxyauth.Auth{Attributes: map[string]string{"base_url": server.URL, "api_key": "test"}}
+	auth := &cliproxyauth.Auth{Attributes: map[string]string{"base_url": server.URL, "api_key": piCodexTestAccessToken()}}
 	result, err := executor.ExecuteStream(context.Background(), auth, cliproxyexecutor.Request{
 		Model: "gpt-5.4",
 		Payload: []byte(`{"model":"gpt-5.4","stream":true,"input":[` +
@@ -52,7 +52,7 @@ func TestCodexExecutorExecuteStreamSanitizesOverlongInputItemIDs(t *testing.T) {
 	}
 
 	if input := gjson.GetBytes(gotBody, "input").Array(); len(input) != 3 {
-		t.Fatalf("upstream input length = %d, want 3: %s", len(input), gotBody)
+		t.Fatalf("upstream input length = %d, want 3 (invalid encrypted reasoning item removed): %s", len(input), gotBody)
 	}
 	if gotType := gjson.GetBytes(gotBody, "input.0.type").String(); gotType != "function_call" {
 		t.Fatalf("input.0.type = %q, want function_call: %s", gotType, gotBody)

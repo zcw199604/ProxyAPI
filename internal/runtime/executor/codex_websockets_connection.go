@@ -25,7 +25,7 @@ const (
 	codexResponsesWebsocketBetaHeaderValue = "responses_websockets=2026-02-06"
 	codexResponsesWebsocketIdleTimeout     = 5 * time.Minute
 	codexResponsesWebsocketMaxAge          = 55 * time.Minute
-	codexResponsesWebsocketHandshakeTO     = 30 * time.Second
+	codexResponsesWebsocketHandshakeTO     = 15 * time.Second
 )
 
 func (e *CodexWebsocketsExecutor) dialCodexWebsocket(ctx context.Context, auth *cliproxyauth.Auth, wsURL string, headers http.Header) (*websocket.Conn, *websocketConnectionCloser, *http.Response, error) {

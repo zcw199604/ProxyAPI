@@ -31,7 +31,7 @@ func codexBufferingConfig(enabled bool) *config.Config {
 }
 
 func codexTestAuth(baseURL string) *cliproxyauth.Auth {
-	return &cliproxyauth.Auth{Attributes: map[string]string{"base_url": baseURL, "api_key": "test"}}
+	return &cliproxyauth.Auth{Attributes: map[string]string{"base_url": baseURL, "api_key": piCodexTestAccessToken()}}
 }
 
 func codexTestRequest() (cliproxyexecutor.Request, cliproxyexecutor.Options) {
@@ -347,24 +347,20 @@ func TestCodexWebsocketsExecutor_BootstrapBuffering_FlushesInOrderOnFirstOutput(
 	}
 }
 
-func TestCodexWebsocketsExecutor_BootstrapBuffering_DefaultDisabledPassthrough(t *testing.T) {
+func TestCodexWebsocketsExecutor_BootstrapBuffering_PiDefaultRejectsOverloadBeforeStart(t *testing.T) {
 	server := codexWebsocketServer(t, codexCreatedEvent, codexOverloadEvent)
 	defer server.Close()
 
 	req, opts := codexWebsocketRequest()
 	result, err := NewCodexWebsocketsExecutor(&config.Config{}).ExecuteStream(context.Background(), codexTestAuth(server.URL), req, opts)
-	if err != nil {
-		t.Fatalf("default unbuffered ExecuteStream returned error at call time: %v", err)
+	if err == nil {
+		t.Fatal("Pi websocket bootstrap overload error = nil, want pre-start failure")
 	}
-	if result == nil {
-		t.Fatal("expected non-nil result in default unbuffered mode")
+	if result != nil {
+		t.Fatal("Pi websocket bootstrap overload returned a stream result")
 	}
-	_, streamErr := drainChunks(result)
-	if streamErr == nil {
-		t.Fatal("expected stream error in chunks for default unbuffered mode")
-	}
-	if got := statusCodeFromTestError(t, streamErr); got != http.StatusBadGateway {
-		t.Fatalf("status code = %d, want %d while buffering is disabled", got, http.StatusBadGateway)
+	if got := statusCodeFromTestError(t, err); got != http.StatusServiceUnavailable {
+		t.Fatalf("status code = %d, want %d for Pi bootstrap failover", got, http.StatusServiceUnavailable)
 	}
 }
 

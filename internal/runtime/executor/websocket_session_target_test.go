@@ -139,13 +139,13 @@ func TestWebsocketRetryBindFailureClearsActiveSessionState(t *testing.T) {
 			run: func(t *testing.T, baseURL string) (func(cliproxyexecutor.Options) error, *codexWebsocketSession) {
 				executor := NewCodexWebsocketsExecutor(&config.Config{SDKConfig: config.SDKConfig{DisableImageGeneration: config.DisableImageGenerationAll}})
 				executor.store = &codexWebsocketSessionStore{sessions: make(map[string]*codexWebsocketSession)}
-				auth := &cliproxyauth.Auth{ID: "retry-bind-codex", Provider: "codex", Attributes: map[string]string{"api_key": "test-key", "base_url": baseURL}}
+				auth := &cliproxyauth.Auth{ID: "retry-bind-codex", Provider: "codex", Attributes: map[string]string{"api_key": piCodexTestAccessToken(), "base_url": baseURL}}
 				req := cliproxyexecutor.Request{Model: "gpt-5-codex", Payload: []byte(`{"model":"gpt-5-codex","input":[{"type":"message","role":"user","content":"hello"}]}`)}
 				primed := false
 				return func(runOpts cliproxyexecutor.Options) error {
 					if !primed {
 						wsURL := "ws" + strings.TrimPrefix(baseURL, "http") + "/responses"
-						conn, _, _, errEnsure := executor.ensureUpstreamConn(context.Background(), auth, executor.getOrCreateSession("retry-bind"), auth.ID, wsURL, http.Header{})
+						conn, _, _, errEnsure := executor.ensureUpstreamConn(context.Background(), auth, executor.getOrCreateSession("retry-bind"), "acct-pi", wsURL, http.Header{})
 						if errEnsure != nil {
 							return errEnsure
 						}
@@ -164,13 +164,13 @@ func TestWebsocketRetryBindFailureClearsActiveSessionState(t *testing.T) {
 			run: func(t *testing.T, baseURL string) (func(cliproxyexecutor.Options) error, *codexWebsocketSession) {
 				executor := NewCodexWebsocketsExecutor(&config.Config{SDKConfig: config.SDKConfig{DisableImageGeneration: config.DisableImageGenerationAll}})
 				executor.store = &codexWebsocketSessionStore{sessions: make(map[string]*codexWebsocketSession)}
-				auth := &cliproxyauth.Auth{ID: "retry-bind-codex", Provider: "codex", Attributes: map[string]string{"api_key": "test-key", "base_url": baseURL}}
+				auth := &cliproxyauth.Auth{ID: "retry-bind-codex", Provider: "codex", Attributes: map[string]string{"api_key": piCodexTestAccessToken(), "base_url": baseURL}}
 				req := cliproxyexecutor.Request{Model: "gpt-5-codex", Payload: []byte(`{"model":"gpt-5-codex","input":[{"type":"message","role":"user","content":"hello"}]}`)}
 				primed := false
 				return func(runOpts cliproxyexecutor.Options) error {
 					if !primed {
 						wsURL := "ws" + strings.TrimPrefix(baseURL, "http") + "/responses"
-						conn, _, _, errEnsure := executor.ensureUpstreamConn(context.Background(), auth, executor.getOrCreateSession("retry-bind"), auth.ID, wsURL, http.Header{})
+						conn, _, _, errEnsure := executor.ensureUpstreamConn(context.Background(), auth, executor.getOrCreateSession("retry-bind"), "acct-pi", wsURL, http.Header{})
 						if errEnsure != nil {
 							return errEnsure
 						}
@@ -670,7 +670,12 @@ func (d websocketHomeDispatcher) RPopAuth(context.Context, string, string, http.
 		"provider": d.provider,
 		"status":   "active",
 		"attributes": map[string]string{
-			"api_key": "home-key",
+			"api_key": func() string {
+				if d.provider == "codex" {
+					return piCodexTestAccessToken()
+				}
+				return "home-key"
+			}(),
 		},
 	}})
 }
@@ -706,7 +711,12 @@ func (d *accountedWebsocketHomeDispatcher) RPopAuth(_ context.Context, model str
 			"provider": d.provider,
 			"status":   "active",
 			"attributes": map[string]string{
-				"api_key":    "test-key",
+				"api_key": func() string {
+					if d.provider == "codex" {
+						return piCodexTestAccessToken()
+					}
+					return "test-key"
+				}(),
 				"base_url":   d.baseURL,
 				"websockets": "true",
 			},
@@ -922,7 +932,7 @@ func (d *codex426RetryDispatcher) RPopAuth(_ context.Context, model string, _ st
 	}
 	credentialID := "codex-home-" + strconv.Itoa(call)
 	attributes := map[string]string{
-		"api_key":  "home-key",
+		"api_key":  piCodexTestAccessToken(),
 		"base_url": d.baseURLs[call-1],
 	}
 	if call <= len(d.websockets) && d.websockets[call-1] {

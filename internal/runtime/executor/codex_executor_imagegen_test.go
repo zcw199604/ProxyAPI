@@ -31,7 +31,7 @@ func TestCodexExecutorExecuteResponsesLiteHeaderDoesNotInjectImageGenerationTool
 	auth := &cliproxyauth.Auth{
 		Provider: "codex",
 		Attributes: map[string]string{
-			"api_key":   "test",
+			"api_key":   piCodexTestAccessToken(),
 			"base_url":  server.URL,
 			"plan_type": "pro",
 		},
@@ -53,8 +53,8 @@ func TestCodexExecutorExecuteResponsesLiteHeaderDoesNotInjectImageGenerationTool
 		t.Fatalf("unexpected tools in responses-lite upstream payload: %s", tools.Raw)
 	}
 	parallelToolCalls := gjson.GetBytes(gotBody, "parallel_tool_calls")
-	if !parallelToolCalls.Exists() || parallelToolCalls.Bool() {
-		t.Fatalf("responses-lite parallel_tool_calls should be false: %s", gotBody)
+	if !parallelToolCalls.Exists() || !parallelToolCalls.Bool() {
+		t.Fatalf("Pi parallel_tool_calls should be true: %s", gotBody)
 	}
 }
 
@@ -75,7 +75,7 @@ func TestCodexExecutorExecuteStreamResponsesLiteHeaderForcesParallelToolCallsFal
 	auth := &cliproxyauth.Auth{
 		Provider: "codex",
 		Attributes: map[string]string{
-			"api_key":   "test",
+			"api_key":   piCodexTestAccessToken(),
 			"base_url":  server.URL,
 			"plan_type": "pro",
 		},
@@ -100,8 +100,8 @@ func TestCodexExecutorExecuteStreamResponsesLiteHeaderForcesParallelToolCallsFal
 	}
 
 	parallelToolCalls := gjson.GetBytes(gotBody, "parallel_tool_calls")
-	if !parallelToolCalls.Exists() || parallelToolCalls.Bool() {
-		t.Fatalf("responses-lite parallel_tool_calls should be false: %s", gotBody)
+	if !parallelToolCalls.Exists() || !parallelToolCalls.Bool() {
+		t.Fatalf("Pi parallel_tool_calls should be true: %s", gotBody)
 	}
 }
 

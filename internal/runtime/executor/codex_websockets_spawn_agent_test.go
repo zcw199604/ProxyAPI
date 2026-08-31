@@ -65,7 +65,7 @@ func TestCodexWebsocketsExecutorRestoresMultiAgentV2NamespaceAcrossIncrementalTu
 				ID: "codex-test",
 				Attributes: map[string]string{
 					"base_url": server.URL,
-					"api_key":  "test",
+					"api_key":  piCodexTestAccessToken(),
 				},
 			}
 			opts := cliproxyexecutor.Options{
@@ -196,7 +196,7 @@ func TestCodexWebsocketsExecutorOptimizeMultiAgentV2(t *testing.T) {
 
 	auth := &cliproxyauth.Auth{Attributes: map[string]string{
 		"base_url": server.URL,
-		"api_key":  "test",
+		"api_key":  piCodexTestAccessToken(),
 	}}
 	req := cliproxyexecutor.Request{Model: "gpt-5.4", Payload: codexSpawnAgentTestPayload()}
 	opts := cliproxyexecutor.Options{

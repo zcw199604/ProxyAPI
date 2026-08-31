@@ -71,7 +71,7 @@ func TestCodexExecutorReasoningReplayCacheStoresFinalDoneAndInjectsNextClaudeReq
 		ID: "auth-replay-1",
 		Attributes: map[string]string{
 			"base_url": server.URL,
-			"api_key":  "test",
+			"api_key":  piCodexTestAccessToken(),
 		},
 	}
 	opts := cliproxyexecutor.Options{
@@ -255,14 +255,14 @@ func TestCodexExecutorReasoningReplayCacheSharesSameSessionAcrossCodexAuths(t *t
 		ID: "auth-replay-session-auth-a",
 		Attributes: map[string]string{
 			"base_url": server.URL,
-			"api_key":  "test-a",
+			"api_key":  piCodexTestAccessToken(),
 		},
 	}
 	secondAuth := &cliproxyauth.Auth{
 		ID: "auth-replay-session-auth-b",
 		Attributes: map[string]string{
 			"base_url": server.URL,
-			"api_key":  "test-b",
+			"api_key":  piCodexTestAccessToken(),
 		},
 	}
 	opts := cliproxyexecutor.Options{
@@ -331,7 +331,7 @@ func TestCodexExecutorReasoningReplayCacheDoesNotInjectNativeResponsesRequest(t 
 		ID: "auth-replay-native",
 		Attributes: map[string]string{
 			"base_url": server.URL,
-			"api_key":  "test",
+			"api_key":  piCodexTestAccessToken(),
 		},
 	}, cliproxyexecutor.Request{
 		Model:   "gpt-5.4",
@@ -369,7 +369,7 @@ func TestCodexExecutorReasoningReplayCacheDoesNotStoreNativeResponsesRequest(t *
 		ID: "auth-replay-native-store",
 		Attributes: map[string]string{
 			"base_url": server.URL,
-			"api_key":  "test",
+			"api_key":  piCodexTestAccessToken(),
 		},
 	}, cliproxyexecutor.Request{
 		Model:   "gpt-5.4",
@@ -412,7 +412,7 @@ func TestCodexExecutorReasoningReplayCacheDoesNotDuplicateClaudeClientReasoning(
 		ID: "auth-replay-2",
 		Attributes: map[string]string{
 			"base_url": server.URL,
-			"api_key":  "test",
+			"api_key":  piCodexTestAccessToken(),
 		},
 	}, cliproxyexecutor.Request{
 		Model:   "gpt-5.4",
@@ -463,7 +463,7 @@ func TestCodexExecutorReasoningReplayCacheInsertsReasoningBeforeAssistantOutputI
 		ID: "auth-replay-history",
 		Attributes: map[string]string{
 			"base_url": server.URL,
-			"api_key":  "test",
+			"api_key":  piCodexTestAccessToken(),
 		},
 	}, cliproxyexecutor.Request{
 		Model: "gpt-5.4",
@@ -527,7 +527,7 @@ func TestCodexExecutorReasoningReplayCacheExecuteStreamStoresFinalDoneForClaude(
 		ID: "auth-replay-stream",
 		Attributes: map[string]string{
 			"base_url": server.URL,
-			"api_key":  "test",
+			"api_key":  piCodexTestAccessToken(),
 		},
 	}
 
@@ -586,7 +586,7 @@ func TestCodexExecutorReasoningReplayCacheClearsOnNonStreamResponseFailedInvalid
 		ID: "auth-replay-invalid-nonstream",
 		Attributes: map[string]string{
 			"base_url": server.URL,
-			"api_key":  "test",
+			"api_key":  piCodexTestAccessToken(),
 		},
 	}, cliproxyexecutor.Request{
 		Model:   "gpt-5.4",
@@ -622,7 +622,7 @@ func TestCodexExecutorReasoningReplayCacheClearsOnStreamResponseFailedInvalidSig
 		ID: "auth-replay-invalid-stream",
 		Attributes: map[string]string{
 			"base_url": server.URL,
-			"api_key":  "test",
+			"api_key":  piCodexTestAccessToken(),
 		},
 	}, cliproxyexecutor.Request{
 		Model:   "gpt-5.4",
@@ -675,7 +675,7 @@ func TestCodexExecutorReasoningReplayCacheReplaysFunctionCallForClaudeToolResult
 		ID: "auth-replay-claude-tool",
 		Attributes: map[string]string{
 			"base_url": server.URL,
-			"api_key":  "test",
+			"api_key":  piCodexTestAccessToken(),
 		},
 	}
 	opts := cliproxyexecutor.Options{
@@ -1030,7 +1030,7 @@ func TestCodexExecutorReasoningReplayCacheMatchesShortenedClaudeToolResultCallID
 		ID: "auth-replay-claude-short-tool",
 		Attributes: map[string]string{
 			"base_url": server.URL,
-			"api_key":  "test",
+			"api_key":  piCodexTestAccessToken(),
 		},
 	}
 	opts := cliproxyexecutor.Options{
