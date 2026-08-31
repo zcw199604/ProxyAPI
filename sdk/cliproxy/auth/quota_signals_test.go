@@ -154,6 +154,13 @@ func TestObservedQuotaWindowsUsesCurrentAccountSignals(t *testing.T) {
 	}); !reflect.DeepEqual(got, []string{"7d"}) {
 		t.Fatalf("Codex weekly window = %#v, want [7d]", got)
 	}
+
+	if got := ObservedQuotaWindows("codex", map[string]string{
+		"X-Codex-Primary-Window-Minutes":   "300",
+		"X-Codex-Secondary-Window-Minutes": "10080",
+	}); !reflect.DeepEqual(got, []string{"5h", "7d"}) {
+		t.Fatalf("Codex primary and secondary windows = %#v, want [5h 7d]", got)
+	}
 }
 
 func TestQuotaStateObserveResponseHeadersDropsKimiGrokAndAntigravitySignals(t *testing.T) {

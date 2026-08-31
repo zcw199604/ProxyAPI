@@ -47,7 +47,9 @@ func TestAccountUsageStatsSeparatesQuotaWindowsAndImportTotal(t *testing.T) {
 		"Anthropic-Ratelimit-Unified-5h-Status": "allowed",
 		"Anthropic-Ratelimit-Unified-7d-Status": "allowed",
 	}}
-	stats := h.accountUsageStats("auth-window", "claude", quota, now.Add(-30*24*time.Hour))
+	// CreatedAt may be reconstructed after a restart. The durable total must
+	// still include every event retained for this imported account.
+	stats := h.accountUsageStats("auth-window", "claude", quota)
 	if stats == nil {
 		t.Fatal("accountUsageStats returned nil")
 	}
@@ -69,7 +71,7 @@ func TestAccountUsageStatsSeparatesQuotaWindowsAndImportTotal(t *testing.T) {
 
 	stats = h.accountUsageStats("auth-window", "claude", coreauth.QuotaState{Signals: map[string]string{
 		"Anthropic-Ratelimit-Unified-7d-Status": "allowed",
-	}}, now.Add(-30*24*time.Hour))
+	}})
 	windows, ok = stats["windows"].(gin.H)
 	if !ok {
 		t.Fatalf("windows payload without 5h = %#v", stats["windows"])

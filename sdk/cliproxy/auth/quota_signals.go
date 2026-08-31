@@ -34,7 +34,7 @@ func ObservedQuotaWindows(provider string, signals map[string]string) []string {
 				has7d = true
 			}
 		case "codex":
-			if !strings.HasSuffix(key, "-primary-window-minutes") {
+			if key != "x-codex-primary-window-minutes" && key != "x-codex-secondary-window-minutes" {
 				continue
 			}
 			minutes, err := strconv.Atoi(value)

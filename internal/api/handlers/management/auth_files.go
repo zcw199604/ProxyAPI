@@ -345,7 +345,7 @@ func (h *Handler) buildAuthFileEntryLocked(auth *coreauth.Auth) gin.H {
 	entry["success"] = auth.Success
 	entry["failed"] = auth.Failed
 	entry["recent_requests"] = auth.RecentRequestsSnapshot(time.Now())
-	if stats := h.accountUsageStats(auth.ID, auth.Provider, auth.Quota, auth.CreatedAt); stats != nil {
+	if stats := h.accountUsageStats(auth.ID, auth.Provider, auth.Quota); stats != nil {
 		entry["usage_stats"] = stats
 	}
 	entry["quota"] = quotaObservationPayloadForProvider(auth.Provider, auth.Quota)
@@ -451,7 +451,7 @@ func authFileRequestRetryFromJSON(data []byte) (int, bool) {
 
 // accountUsageStats returns a bounded, credential-free snapshot suitable for
 // embedding next to an auth-file/quota entry in the management response.
-func (h *Handler) accountUsageStats(authID, provider string, quota coreauth.QuotaState, importedAt time.Time) gin.H {
+func (h *Handler) accountUsageStats(authID, provider string, quota coreauth.QuotaState) gin.H {
 	if h == nil || strings.TrimSpace(authID) == "" {
 		return nil
 	}
@@ -465,7 +465,11 @@ func (h *Handler) accountUsageStats(authID, provider string, quota coreauth.Quot
 	// provider alias change cannot hide earlier events for the same account.
 	query := internalusage.Query{AuthID: authID}
 	now := time.Now().UTC()
-	total, err := plugin.QueryWindow(query, importedAt, now)
+	// The durable event history is the import-to-date total. Do not use the
+	// runtime CreatedAt value as a lower bound because it can be reconstructed
+	// when the service restarts. Event retention remains controlled by
+	// usage-stats-retention-days (zero keeps history indefinitely).
+	total, err := plugin.QueryWindow(query, time.Time{}, now)
 	if err != nil {
 		return nil
 	}
