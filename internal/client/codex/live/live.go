@@ -1,4 +1,8 @@
 // Package live forwards Codex realtime WebRTC session bootstrap requests.
+//
+// Realtime/live is intentionally outside the Pi-compatible Codex Responses
+// executor contract. It speaks the dedicated Codex realtime protocol directly
+// and must continue to use its liveProtocolHeaders plus account header.
 package live
 
 import (
