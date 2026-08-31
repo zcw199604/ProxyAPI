@@ -43,3 +43,5 @@
 - `GET /v0/management/auth-files`：每个认证账号条目在启用统计后增加 `usage_stats`，可直接在认证文件/配额列表展示累计请求数、Token、金额和 priced/unpriced 状态。`usage_stats.windows.total` 聚合该账号保留的全部持久化事件，可跨服务重启和多个 7d 周期；当账号最新额度信号明确包含对应窗口时，还会返回 `windows.5h`/`windows.7d`，分别统计最近 5 小时和最近 7 天。`available_windows` 只列出账号实际存在的滚动额度窗口，同一请求可同时计入两个窗口。默认永久保留统计事件；若配置 `usage-stats-retention-days`，累计值只覆盖保留期。
 - `GET|PUT /v0/management/account-pricing`、`PUT|DELETE /v0/management/account-pricing/:id`：读取、写入或软禁用账号级模型价格覆盖；价格使用 USD 字符串，最多 9 位小数，显式 `0` 表示免费。
 - `GET /v0/management/pricing/status`、`GET /v0/management/pricing/models`、`POST /v0/management/pricing/sync`：查询价格目录同步状态、搜索模型或手动同步 sub2api 目录。
+
+管理中心默认从 `https://github.com/zcw199604/Cli-Proxy-API-Management-Center` 的 Release 下载。已有配置若仍填写官方上游默认地址，会在加载时自动迁移到该 fork；显式填写其他地址的配置不受影响。
