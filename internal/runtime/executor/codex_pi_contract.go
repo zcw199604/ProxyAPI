@@ -54,7 +54,9 @@ func normalizePiCodexPayload(body []byte, model string, sessionID string, header
 		parallelToolCalls = false
 	}
 	body = helps.SetBoolIfDifferent(body, "parallel_tool_calls", parallelToolCalls)
-	for _, field := range []string{"generate", "prompt_cache_retention", "safety_identifier", "stream_options"} {
+	// Codex uses session affinity, not the public Responses cache controls.
+	// Strip these here as well because payload overrides run after translation.
+	for _, field := range []string{"generate", "prompt_cache_retention", "prompt_cache_options", "safety_identifier", "stream_options"} {
 		body, _ = sjson.DeleteBytes(body, field)
 	}
 	if sessionID = clampPiCodexSessionID(sessionID); sessionID != "" {

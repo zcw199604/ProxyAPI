@@ -79,6 +79,7 @@ An explicit non-empty instruction, text verbosity, or tool choice is retained be
 
 - `generate`
 - `prompt_cache_retention`
+- `prompt_cache_options`
 - `safety_identifier`
 - `stream_options`
 
@@ -87,6 +88,10 @@ A caller-supplied `previous_response_id` is preserved for an initial request; re
 When a session ID is present, it is Unicode-clamped to 64 code points and sent as `prompt_cache_key`. A caller-supplied `prompt_cache_key` has priority, followed by the execution or derived session identity. No random prompt-cache key is generated when there is no Pi session.
 
 ## SSE Transport
+
+The executor handles terminal events at EOF even without a trailing blank line (including no final newline). Regression coverage exercises non-streaming, streaming, and bootstrap-buffered requests.
+
+Pi v0.85.1's `prompt_cache_options.ttl: "30m"` change applies to public OpenAI Responses, not the Codex subscription adapter. Codex requests continue using session affinity; public cache controls are removed after payload overrides for both HTTP and WebSocket transport.
 
 The endpoint is:
 

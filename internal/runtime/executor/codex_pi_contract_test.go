@@ -19,6 +19,22 @@ import (
 
 const piCodexReferenceCommit = "853a80d26c90a14c1886f0ebb8ffaae133ca2185"
 
+func TestPiCodexPayloadStripsOpenAICacheControls(t *testing.T) {
+	for _, model := range []string{"gpt-5.5", "gpt-5.6-sol", "gpt-6-astra"} {
+		t.Run(model, func(t *testing.T) {
+			body := normalizePiCodexPayload([]byte(`{"input":[],"prompt_cache_retention":"24h","prompt_cache_options":{"ttl":"30m","mode":"explicit"}}`), model, "session-cache")
+			for _, field := range []string{"prompt_cache_retention", "prompt_cache_options"} {
+				if gjson.GetBytes(body, field).Exists() {
+					t.Errorf("unsupported %s forwarded: %s", field, body)
+				}
+			}
+			if gjson.GetBytes(body, "prompt_cache_key").String() != "session-cache" {
+				t.Fatalf("lost session affinity: %s", body)
+			}
+		})
+	}
+}
+
 func piCodexTestAccessToken() string {
 	return "eyJhbGciOiJub25lIn0." + base64.RawURLEncoding.EncodeToString([]byte(`{"https://api.openai.com/auth":{"chatgpt_account_id":"acct-pi"}}`)) + ".signature"
 }

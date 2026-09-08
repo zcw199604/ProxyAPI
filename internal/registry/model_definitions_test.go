@@ -2,6 +2,22 @@ package registry
 
 import "testing"
 
+func TestCodexCatalogIncludesAstra(t *testing.T) {
+	for name, models := range map[string][]*ModelInfo{"plus": GetCodexPlusModels(), "pro": GetCodexProModels(), "team": GetCodexTeamModels()} {
+		t.Run(name, func(t *testing.T) {
+			for _, model := range models {
+				if model.ID == "gpt-6-astra" {
+					if model.ContextLength != 272000 || model.MaxCompletionTokens != 128000 || model.Thinking == nil {
+						t.Fatalf("unexpected Astra capabilities: %+v", model)
+					}
+					return
+				}
+			}
+			t.Fatal("missing gpt-6-astra")
+		})
+	}
+}
+
 func TestGetStaticModelDefinitionsByChannelSupportsGeminiInteractions(t *testing.T) {
 	models := GetStaticModelDefinitionsByChannel("gemini-interactions")
 	if len(models) == 0 {
