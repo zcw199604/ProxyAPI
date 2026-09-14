@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/config"
+	"github.com/router-for-me/CLIProxyAPI/v7/internal/runtime/executor/helps"
 	cliproxyauth "github.com/router-for-me/CLIProxyAPI/v7/sdk/cliproxy/auth"
 	cliproxyexecutor "github.com/router-for-me/CLIProxyAPI/v7/sdk/cliproxy/executor"
 )
@@ -116,6 +117,13 @@ func (e *CodexAutoExecutor) HttpRequest(ctx context.Context, auth *cliproxyauth.
 }
 
 func (e *CodexAutoExecutor) Execute(ctx context.Context, auth *cliproxyauth.Auth, req cliproxyexecutor.Request, opts cliproxyexecutor.Options) (cliproxyexecutor.Response, error) {
+	ctx = helps.WithCodexOverloadRetry(ctx)
+	return helps.RetryCodexOverload(ctx, func() (cliproxyexecutor.Response, error) {
+		return e.executeOnce(ctx, auth, req, opts)
+	})
+}
+
+func (e *CodexAutoExecutor) executeOnce(ctx context.Context, auth *cliproxyauth.Auth, req cliproxyexecutor.Request, opts cliproxyexecutor.Options) (cliproxyexecutor.Response, error) {
 	if e == nil || e.httpExec == nil || e.wsExec == nil {
 		return cliproxyexecutor.Response{}, fmt.Errorf("codex auto executor: executor is nil")
 	}
@@ -142,13 +150,24 @@ func (e *CodexAutoExecutor) Execute(ctx context.Context, auth *cliproxyauth.Auth
 }
 
 func (e *CodexAutoExecutor) ExecuteStream(ctx context.Context, auth *cliproxyauth.Auth, req cliproxyexecutor.Request, opts cliproxyexecutor.Options) (*cliproxyexecutor.StreamResult, error) {
+	ctx = helps.WithCodexOverloadRetry(ctx)
+	result, err := helps.RetryCodexOverload(ctx, func() (*cliproxyexecutor.StreamResult, error) {
+		return e.executeStreamOnce(ctx, auth, req, opts)
+	})
+	if err != nil {
+		return nil, err
+	}
+	return helps.CodexOverloadStream(ctx, result), nil
+}
+
+func (e *CodexAutoExecutor) executeStreamOnce(ctx context.Context, auth *cliproxyauth.Auth, req cliproxyexecutor.Request, opts cliproxyexecutor.Options) (*cliproxyexecutor.StreamResult, error) {
 	if e == nil || e.httpExec == nil || e.wsExec == nil {
 		return nil, fmt.Errorf("codex auto executor: executor is nil")
 	}
 	piPreferred := e.piWebsocketPreferred(auth, opts)
 	executionSessionID := executionSessionIDFromOptions(opts)
 	if piPreferred && e.wsExec.piSSEFallbackActive(executionSessionID) {
-		return e.httpExec.ExecuteStream(ctx, auth, req, opts)
+		return e.httpExec.executeStream(ctx, auth, req, opts, true)
 	}
 	if piPreferred || (cliproxyexecutor.DownstreamWebsocket(ctx) && codexWebsocketsEnabled(auth)) {
 		result, err := e.wsExec.ExecuteStream(ctx, auth, req, opts)
@@ -159,12 +178,12 @@ func (e *CodexAutoExecutor) ExecuteStream(ctx context.Context, auth *cliproxyaut
 			return result, err
 		}
 		e.wsExec.activatePiSSEFallback(executionSessionID)
-		return e.httpExec.ExecuteStream(ctx, auth, req, opts)
+		return e.httpExec.executeStream(ctx, auth, req, opts, true)
 	}
 	if cliproxyexecutor.RequiredUpstreamWebsocket(ctx) {
 		return nil, cliproxyexecutor.NewUpstreamWebsocketReplayRequiredError()
 	}
-	return e.httpExec.ExecuteStream(ctx, auth, req, opts)
+	return e.httpExec.executeStream(ctx, auth, req, opts, true)
 }
 
 func (e *CodexAutoExecutor) Refresh(ctx context.Context, auth *cliproxyauth.Auth) (*cliproxyauth.Auth, error) {

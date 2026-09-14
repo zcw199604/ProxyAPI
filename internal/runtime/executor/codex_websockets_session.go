@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/router-for-me/CLIProxyAPI/v7/internal/runtime/executor/helps"
 	cliproxyauth "github.com/router-for-me/CLIProxyAPI/v7/sdk/cliproxy/auth"
 	cliproxyexecutor "github.com/router-for-me/CLIProxyAPI/v7/sdk/cliproxy/executor"
 	log "github.com/sirupsen/logrus"
@@ -690,14 +691,24 @@ func (e *CodexWebsocketsExecutor) readUpstreamLoop(sess *codexWebsocketSession, 
 }
 
 func (e *CodexWebsocketsExecutor) invalidateUpstreamConn(sess *codexWebsocketSession, conn *websocket.Conn, reason string, err error) {
-	e.invalidateUpstreamConnWithNotify(sess, conn, reason, err, true)
+	e.invalidateUpstreamConnWithNotify(sess, conn, reason, err, true, false)
 }
 
 func (e *CodexWebsocketsExecutor) invalidateUpstreamConnWithoutDisconnectNotify(sess *codexWebsocketSession, conn *websocket.Conn, reason string, err error) {
-	e.invalidateUpstreamConnWithNotify(sess, conn, reason, err, false)
+	e.invalidateUpstreamConnWithNotify(sess, conn, reason, err, false, false)
 }
 
-func (e *CodexWebsocketsExecutor) invalidateUpstreamConnWithNotify(sess *codexWebsocketSession, conn *websocket.Conn, reason string, err error, notify bool) {
+// invalidateOverloadForRetry closes only the rejected connection. The caller still owns
+// the Home selection and downstream session until the bounded retry loop finishes.
+func (e *CodexWebsocketsExecutor) invalidateOverloadForRetry(ctx context.Context, sess *codexWebsocketSession, conn *websocket.Conn, err error) bool {
+	if !helps.CodexOverloadRetryEnabled(ctx) || !helps.IsCodexOverload(err) {
+		return false
+	}
+	e.invalidateUpstreamConnWithNotify(sess, conn, "overload_retry", err, false, true)
+	return true
+}
+
+func (e *CodexWebsocketsExecutor) invalidateUpstreamConnWithNotify(sess *codexWebsocketSession, conn *websocket.Conn, reason string, err error, notify, preserveLifecycle bool) {
 	if sess == nil || conn == nil {
 		return
 	}
@@ -733,7 +744,7 @@ func (e *CodexWebsocketsExecutor) invalidateUpstreamConnWithNotify(sess *codexWe
 			log.Errorf("codex websockets executor: close websocket error: %v", errClose)
 		}
 	}
-	if lifecycle != nil {
+	if lifecycle != nil && !preserveLifecycle {
 		lifecycle.End(reason)
 	}
 }

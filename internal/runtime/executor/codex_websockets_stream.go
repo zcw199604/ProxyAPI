@@ -331,7 +331,9 @@ func (e *CodexWebsocketsExecutor) ExecuteStream(ctx context.Context, auth *clipr
 			if wsErr, ok := parseCodexWebsocketError(payload); ok {
 				sess.clearPiContinuation()
 				if sess != nil {
-					e.invalidateUpstreamConn(sess, conn, "upstream_error", wsErr)
+					if !e.invalidateOverloadForRetry(ctx, sess, conn, wsErr) {
+						e.invalidateUpstreamConn(sess, conn, "upstream_error", wsErr)
+					}
 					sess.clearActive(conn, readCh)
 					unlockStreamSession()
 				} else {
@@ -351,7 +353,7 @@ func (e *CodexWebsocketsExecutor) ExecuteStream(ctx context.Context, auth *clipr
 				return nil, wsErr
 			}
 			if streamErr, terminalBody, ok := codexTerminalFailureErr(payload); ok {
-				// A transient capacity rejection is retried on another credential, so the
+				// A transient capacity rejection may be retried, so the
 				// downstream websocket session must survive this upstream teardown. Notifying
 				// the disconnect here would close the client connection before the retry can
 				// deliver anything. Every other terminal failure is forwarded in-stream and
@@ -359,10 +361,12 @@ func (e *CodexWebsocketsExecutor) ExecuteStream(ctx context.Context, auth *clipr
 				failoverPending := isCodexOverloadBootstrapFailure(terminalBody)
 				if sess != nil {
 					unlockStreamSession()
-					if failoverPending {
-						e.invalidateUpstreamConnWithoutDisconnectNotify(sess, conn, "terminal_failure", streamErr)
-					} else {
-						e.invalidateUpstreamConn(sess, conn, "terminal_failure", streamErr)
+					if !e.invalidateOverloadForRetry(ctx, sess, conn, streamErr) {
+						if failoverPending {
+							e.invalidateUpstreamConnWithoutDisconnectNotify(sess, conn, "terminal_failure", streamErr)
+						} else {
+							e.invalidateUpstreamConn(sess, conn, "terminal_failure", streamErr)
+						}
 					}
 					sess.clearActive(conn, readCh)
 				} else {
@@ -378,7 +382,7 @@ func (e *CodexWebsocketsExecutor) ExecuteStream(ctx context.Context, auth *clipr
 				reporter.PublishFailure(ctx, streamErr)
 				if failoverPending {
 					// Fail the attempt before the downstream headers are committed so the
-					// conductor can transparently retry on another credential, and report the
+					// caller can transparently retry, and report the
 					// status the upstream refused to put on the wire.
 					helps.LogWithRequestID(ctx).Debugf("codex websockets executor: bootstrap overload rejection after %d buffered handshake events, failing over", len(bufferedChunks))
 					return nil, newCodexBootstrapOverloadErr(terminalBody)

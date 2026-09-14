@@ -242,16 +242,12 @@ routing:
 
 # Codex provider behavior.
 codex:
-  # Hold back the initial handshake events (response.created, response.in_progress and the
-  # websocket metadata frames) until the upstream emits its first generated event.
-  # Why: the upstream smuggles `server_is_overloaded` rejections *inside* an HTTP 200 stream,
-  # right after those handshake events, instead of returning 503 on the wire. Buffering them
-  # keeps the downstream response headers uncommitted long enough to transparently retry on
-  # another credential. Only overload/rate-limit rejections trigger failover; every other
-  # terminal failure is still delivered in-stream exactly as before.
-  # Trade-off: response headers are delayed until generation starts, which can trip client or
-  # reverse-proxy read timeouts (e.g. nginx proxy_read_timeout) on long reasoning requests.
-  # Default: false
+  # Handshake buffering for direct HTTP executor users; default false.
+  # The server's CodexAutoExecutor always buffers initial handshake events, regardless of
+  # this setting, to retry server_is_overloaded/service_unavailable_error on the same account.
+  # It waits 5 seconds before each of up to 3 retries, then returns the error without cooling
+  # the account. Once generated output is sent, overload errors are returned without replay.
+  # Response headers are delayed until generation starts; configure proxy read limits accordingly.
   stream-bootstrap-buffering: false
   # When true, optimize Codex Desktop, codex-tui, and codex_cli_rs requests for multi-agent v2.
   # This refreshes Codex spawn_agent model details, removes message parameter encryption,

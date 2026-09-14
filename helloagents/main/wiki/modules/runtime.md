@@ -13,6 +13,12 @@
 - Pi profile 在 translator/thinking 后统一请求体，并最终覆盖 Pi-owned Header；SSE 使用 zstd level 3，WebSocket 使用 Pi Beta、同值 request/session ID、5 分钟 idle 和 55 分钟 max age。
 - Pi WebSocket 会话按 execution session + access-token account ID 隔离，支持增量 continuation；建连前失败回退 SSE 后，该 session 保持 SSE 模式。
 
+## Codex overload retries
+- The registered `CodexAutoExecutor` retries `server_is_overloaded` / `service_unavailable_error` on the same account after a cancellable 5-second wait, up to three retries (four attempts total).
+- HTTP error responses and SSE/WebSocket bootstrap failures share this policy. The auto executor always buffers handshake events, including HTTP fallback, regardless of `codex.stream-bootstrap-buffering` (which remains available to direct HTTP executor users).
+- Exhausted overload errors retain the upstream error body/status and are request-scoped: no credential rotation, additional manager retry, or account/model cooldown is applied. Other error types retain their existing handling.
+- Once generated output has been released, a late overload is forwarded without replaying the request and without cooling the account. Existing unrelated account restrictions are preserved.
+
 ## 依赖
 - `internal/auth`
 - `internal/registry`

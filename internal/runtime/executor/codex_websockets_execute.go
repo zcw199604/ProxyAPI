@@ -296,7 +296,9 @@ func (e *CodexWebsocketsExecutor) Execute(ctx context.Context, auth *cliproxyaut
 		if wsErr, ok := parseCodexWebsocketError(payload); ok {
 			sess.clearPiContinuation()
 			if sess != nil {
-				e.invalidateUpstreamConn(sess, conn, "upstream_error", wsErr)
+				if !e.invalidateOverloadForRetry(ctx, sess, conn, wsErr) {
+					e.invalidateUpstreamConn(sess, conn, "upstream_error", wsErr)
+				}
 			}
 			if errClearReplay := clearCodexReasoningReplayOnWebsocketError(ctx, replayScope, payload); errClearReplay != nil {
 				return resp, errClearReplay
@@ -310,7 +312,9 @@ func (e *CodexWebsocketsExecutor) Execute(ctx context.Context, auth *cliproxyaut
 		if streamErr, terminalBody, ok := codexTerminalFailureErr(payload); ok {
 			if sess != nil {
 				unlockSession()
-				e.invalidateUpstreamConn(sess, conn, "terminal_failure", streamErr)
+				if !e.invalidateOverloadForRetry(ctx, sess, conn, streamErr) {
+					e.invalidateUpstreamConn(sess, conn, "terminal_failure", streamErr)
+				}
 			}
 			if errClearReplay := clearCodexReasoningReplayOnInvalidSignature(ctx, replayScope, streamErr.StatusCode(), terminalBody); errClearReplay != nil {
 				return resp, errClearReplay

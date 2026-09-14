@@ -21,6 +21,10 @@ import (
 )
 
 func (e *CodexExecutor) ExecuteStream(ctx context.Context, auth *cliproxyauth.Auth, req cliproxyexecutor.Request, opts cliproxyexecutor.Options) (_ *cliproxyexecutor.StreamResult, err error) {
+	return e.executeStream(ctx, auth, req, opts, e.cfg != nil && e.cfg.Codex.StreamBootstrapBuffering)
+}
+
+func (e *CodexExecutor) executeStream(ctx context.Context, auth *cliproxyauth.Auth, req cliproxyexecutor.Request, opts cliproxyexecutor.Options, buffering bool) (_ *cliproxyexecutor.StreamResult, err error) {
 	baseModel := thinking.ParseSuffix(req.Model).ModelName
 
 	apiKey, baseURL := codexCreds(auth)
@@ -123,8 +127,6 @@ func (e *CodexExecutor) ExecuteStream(ctx context.Context, auth *cliproxyauth.Au
 		return nil, err
 	}
 
-	buffering := e.cfg != nil && e.cfg.Codex.StreamBootstrapBuffering
-
 	scanner := bufio.NewScanner(httpResp.Body)
 	scanner.Buffer(nil, 52_428_800) // 50MB
 	claudeInputTokens := helps.NewClaudeInputTokenState(from, to, responseFormat, originalPayload)
@@ -175,7 +177,7 @@ func (e *CodexExecutor) ExecuteStream(ctx context.Context, auth *cliproxyauth.Au
 					if isCodexOverloadBootstrapFailure(terminalBody) {
 						// Transient capacity rejection smuggled into an HTTP 200 stream. Fail the
 						// attempt before the downstream headers are committed so the conductor can
-						// transparently retry on another credential, and report the status the
+						// transparently retry, and report the status the
 						// upstream refused to put on the wire.
 						helps.LogWithRequestID(ctx).Debugf("codex executor: bootstrap overload rejection after %d buffered handshake events, failing over", len(bufferedChunks))
 						return nil, newCodexBootstrapOverloadErr(terminalBody)
